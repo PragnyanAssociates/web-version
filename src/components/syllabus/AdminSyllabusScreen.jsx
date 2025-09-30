@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.tsx";
-import { API_BASE_URL } from "../../apiConfig";
+// ★★★ FIX 1: Import apiClient instead of using fetch ★★★
+import apiClient from '../../api/client';
 import { 
     FaEdit, 
     FaPlus, 
@@ -10,6 +11,21 @@ import {
     FaCalendar 
 } from "react-icons/fa";
 import { MdArrowBack, MdClose, MdBook, MdCheckCircle, MdCancel, MdHourglassEmpty } from 'react-icons/md';
+
+// ★★★ DATE UTILITY FUNCTIONS - FIXES INVALID DATE ISSUES ★★★
+const formatDate = (dateString) => {
+  if (!dateString) return 'N/A';
+  
+  const date = new Date(dateString);
+  
+  // Check if date is valid
+  if (isNaN(date.getTime())) {
+    console.error('Invalid date:', dateString);
+    return 'Invalid Date';
+  }
+  
+  return date.toLocaleDateString();
+};
 
 // --- Icon Components for Header ---
 function UserIcon() {
@@ -93,14 +109,13 @@ const AdminSyllabusScreen = () => {
     async function fetchUnreadNotifications() {
         if (!token) { setUnreadCount?.(0); return; }
         try {
-            const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-            if (res.ok) {
-                const data = await res.json();
-                const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                setLocalUnreadCount(count);
-                setUnreadCount?.(count);
-            } else { setUnreadCount?.(0); }
-        } catch { setUnreadCount?.(0); }
+            // ★★★ FIX 2: Use apiClient for notifications ★★★
+            const response = await apiClient.get('/notifications');
+            const data = response.data;
+            const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+            setLocalUnreadCount(count);
+            setUnreadCount?.(count);
+        } catch (error) { setUnreadCount?.(0); }
     }
     fetchUnreadNotifications();
     const id = setInterval(fetchUnreadNotifications, 60000);
@@ -112,16 +127,15 @@ const AdminSyllabusScreen = () => {
           if (!user?.id) { setLoadingProfile(false); return; }
           setLoadingProfile(true);
           try {
-              const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-              if (res.ok) { setProfile(await res.json()); }
-              else {
-                  setProfile({
-                      id: user.id, username: user.username || "Unknown",
-                      full_name: user.full_name || "User", role: user.role || "user",
-                  });
-              }
-          } catch { setProfile(null); }
-          finally { setLoadingProfile(false); }
+              // ★★★ FIX 3: Use apiClient for profile ★★★
+              const response = await apiClient.get(`/profiles/${user.id}`);
+              setProfile(response.data);
+          } catch (error) {
+              setProfile({
+                  id: user.id, username: user.username || "Unknown",
+                  full_name: user.full_name || "User", role: user.role || "user",
+              });
+          } finally { setLoadingProfile(false); }
       }
       fetchProfile();
   }, [user]);
@@ -262,11 +276,12 @@ const SyllabusHistoryList = ({ onEdit, onCreate, onViewProgress }) => {
   const fetchSyllabusHistory = useCallback(async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/syllabus/all`);
-      if (!response.ok) throw new Error("Failed to load syllabus history.");
-      setSyllabuses(await response.json());
+      // ★★★ FIX 4: Use apiClient and remove /api/ prefix ★★★
+      const response = await apiClient.get('/syllabus/all');
+      setSyllabuses(response.data);
     } catch (error) {
-      alert(error.message);
+      console.error("Error fetching syllabus history:", error);
+      alert(error.response?.data?.message || "Failed to load syllabus history.");
     } finally {
       setIsLoading(false);
     }
@@ -298,7 +313,6 @@ const SyllabusHistoryList = ({ onEdit, onCreate, onViewProgress }) => {
       ) : (
         <>
           <div className="bg-white rounded-xl shadow-md border border-slate-200/80 overflow-hidden">
-            {/* The overflow-x-auto wrapper makes the table scrollable on small screens, which is a standard responsive pattern for complex tables. */}
             <div className="overflow-x-auto">
               <div className="min-w-[800px]">
                 {/* Table Header */}
@@ -318,7 +332,7 @@ const SyllabusHistoryList = ({ onEdit, onCreate, onViewProgress }) => {
                       <div className="col-span-2"><span className="font-medium bg-slate-200 text-slate-700 px-2.5 py-1 rounded-md text-sm">{item.class_group}</span></div>
                       <div className="col-span-1 text-center font-medium text-slate-600">{item.lesson_count}</div>
                       <div className="col-span-2 text-sm text-slate-600">{item.creator_name}</div>
-                      <div className="col-span-2 text-sm text-slate-600">{new Date(item.updated_at).toLocaleDateString()}</div>
+                      <div className="col-span-2 text-sm text-slate-600">{formatDate(item.updated_at)}</div>
                       <div className="col-span-2 flex items-center justify-end gap-2">
                           <button onClick={() => onViewProgress(item)} className="p-2 bg-green-100 hover:bg-green-200 rounded-lg transition" title="View Progress">
                               <FaChartBar className="text-green-600" size={16} />
@@ -348,8 +362,8 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
   const isEditMode = !!initialSyllabus;
   const [selectedClass, setSelectedClass] = useState(isEditMode ? initialSyllabus.class_group : "");
   const [selectedSubject, setSelectedSubject] = useState(isEditMode ? initialSyllabus.subject_name : "");
-  const [selectedTeacherId, setSelectedTeacherId] = useState(isEditMode ? initialSyllabus.creator_id : "");
-  const [lessons, setLessons] = useState(isEditMode ? (initialSyllabus.lessons || []) : [{ lessonName: "", dueDate: "" }]);
+  const [selectedTeacherId, setSelectedTeacherId] = useState(isEditMode ? initialSyllabus.creator_id?.toString() : "");
+  const [lessons, setLessons] = useState([{ lessonName: "", dueDate: "" }]);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [allClasses, setAllClasses] = useState([]);
@@ -359,63 +373,69 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
   const [isTeachersLoading, setIsTeachersLoading] = useState(false);
 
   useEffect(() => {
-    const fetchInitialData = async () => {
-        setIsLoading(true);
-        try {
-            const classRes = await fetch(`${API_BASE_URL}/api/student-classes`);
-            if (classRes.ok) setAllClasses(await classRes.json());
-            if(isEditMode && initialSyllabus.class_group){
-                await handleClassChange(initialSyllabus.class_group, initialSyllabus.subject_name, initialSyllabus.creator_id);
-            }
-        } catch (e) {
-            console.error("Error fetching initial data:", e);
-        } finally {
-            setIsLoading(false);
+    const bootstrapForm = async () => {
+      setIsLoading(true);
+      try {
+        // ★★★ FIX 5: Use apiClient for all fetch calls ★★★
+        const classRes = await apiClient.get('/student-classes');
+        setAllClasses(classRes.data);
+
+        if (isEditMode) {
+          await handleClassChange(initialSyllabus.class_group, true);
+          await handleSubjectChange(initialSyllabus.subject_name, initialSyllabus.class_group, true);
+          
+          // ★★★ FIX 6: Fetch existing lesson data for edit mode ★★★
+          const syllabusDetailsRes = await apiClient.get(`/syllabus/teacher/${initialSyllabus.class_group}/${initialSyllabus.subject_name}`);
+          const syllabusData = syllabusDetailsRes.data;
+          const formattedLessons = syllabusData.lessons.map(l => ({ 
+            lessonName: l.lesson_name, 
+            dueDate: l.due_date.split('T')[0] 
+          }));
+          setLessons(formattedLessons.length > 0 ? formattedLessons : [{ lessonName: "", dueDate: "" }]);
         }
+      } catch (e) { 
+        console.error("Error bootstrapping form:", e); 
+        alert(e.response?.data?.message || "Could not load initial form data."); 
+      } 
+      finally { setIsLoading(false); }
     };
-    fetchInitialData();
-  }, [isEditMode, initialSyllabus]);
+    bootstrapForm();
+  }, []);
 
-
-  const handleClassChange = async (classGroup, prefillSubject = null, prefillTeacher = null) => {
+  const handleClassChange = async (classGroup, isInitialLoad = false) => {
+    if (!isInitialLoad) {
+      setSelectedSubject(''); setAvailableSubjects([]);
+      setSelectedTeacherId(''); setAvailableTeachers([]);
+    }
     setSelectedClass(classGroup);
-    setAvailableSubjects([]); setSelectedSubject("");
-    setAvailableTeachers([]); setSelectedTeacherId("");
     if (!classGroup) return;
 
     setIsSubjectsLoading(true);
     try {
-        const subjectRes = await fetch(`${API_BASE_URL}/api/subjects-for-class/${classGroup}`);
-        if (subjectRes.ok) {
-            const subjects = await subjectRes.json();
-            setAvailableSubjects(subjects);
-            if(prefillSubject){
-                setSelectedSubject(prefillSubject);
-                await handleSubjectChange(prefillSubject, classGroup, prefillTeacher);
-            }
-        }
-    } catch (error) { console.error("Error fetching subjects:", error); } 
+      const subjectRes = await apiClient.get(`/subjects-for-class/${classGroup}`);
+      setAvailableSubjects(subjectRes.data);
+    } catch (error) { 
+      console.error("Error fetching subjects:", error); 
+    } 
     finally { setIsSubjectsLoading(false); }
   };
 
-  const handleSubjectChange = async (subjectName, classGroup = selectedClass, prefillTeacher = null) => {
+  const handleSubjectChange = async (subjectName, classGroup = selectedClass, isInitialLoad = false) => {
+    if (!isInitialLoad) {
+      setSelectedTeacherId(''); setAvailableTeachers([]);
+    }
     setSelectedSubject(subjectName);
-    setAvailableTeachers([]); setSelectedTeacherId("");
     if (!subjectName || !classGroup) return;
-
+    
     setIsTeachersLoading(true);
     try {
-        const teacherRes = await fetch(`${API_BASE_URL}/api/syllabus/teachers/${classGroup}/${subjectName}`);
-        if (teacherRes.ok) {
-            const teachers = await teacherRes.json();
-            setAvailableTeachers(teachers);
-            if(prefillTeacher){
-                setSelectedTeacherId(prefillTeacher);
-            } else if (teachers.length === 1) {
-                setSelectedTeacherId(teachers[0].id);
-            }
-        }
-    } catch (error) { console.error("Error fetching teachers:", error); } 
+      const teacherRes = await apiClient.get(`/syllabus/teachers/${classGroup}/${subjectName}`);
+      const teachers = teacherRes.data;
+      setAvailableTeachers(teachers);
+      if (teachers.length === 1 && !isEditMode) setSelectedTeacherId(teachers[0].id.toString());
+    } catch (error) { 
+      console.error("Error fetching teachers:", error); 
+    } 
     finally { setIsTeachersLoading(false); }
   };
 
@@ -435,27 +455,31 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
     if (validLessons.length === 0) return alert("Please add at least one valid lesson.");
     
     setIsSaving(true);
-    const endpoint = isEditMode ? `/api/syllabus/update/${initialSyllabus.id}` : '/api/syllabus/create';
-    const method = isEditMode ? 'PUT' : 'POST';
 
     try {
-        const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-            method,
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                class_group: selectedClass,
-                subject_name: selectedSubject,
-                lessons: validLessons,
-                creator_id: selectedTeacherId,
-            }),
+      let response;
+      if (isEditMode) {
+        // ★★★ FIX 7: Use correct update endpoint matching mobile ★★★
+        response = await apiClient.put(`/syllabus/${initialSyllabus.id}`, {
+          lessons: validLessons,
+          creator_id: selectedTeacherId,
         });
-        if (!response.ok) throw new Error((await response.json()).message || "Failed to save.");
-        alert(`Syllabus ${isEditMode ? 'updated' : 'saved'} successfully!`);
-        onFinish();
+      } else {
+        response = await apiClient.post('/syllabus/create', {
+          class_group: selectedClass,
+          subject_name: selectedSubject,
+          lessons: validLessons,
+          creator_id: selectedTeacherId,
+        });
+      }
+
+      alert(response.data.message);
+      onFinish();
     } catch (error) {
-        alert(error.message);
+      console.error("Error saving syllabus:", error);
+      alert(error.response?.data?.message || "Failed to save syllabus.");
     } finally {
-        setIsSaving(false);
+      setIsSaving(false);
     }
   };
 
@@ -486,7 +510,7 @@ const CreateOrEditSyllabus = ({ initialSyllabus, onFinish }) => {
             </div>
             <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">Teacher</label>
-                <select value={selectedTeacherId} onChange={(e) => setSelectedTeacherId(e.target.value)} disabled={isEditMode || !selectedSubject || isTeachersLoading} className="w-full bg-white border border-slate-300 p-3 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none transition disabled:bg-slate-100 disabled:text-slate-500">
+                <select value={selectedTeacherId} onChange={(e) => setSelectedTeacherId(e.target.value)} disabled={!selectedSubject || isTeachersLoading} className="w-full bg-white border border-slate-300 p-3 rounded-lg focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none transition disabled:bg-slate-100 disabled:text-slate-500">
                     <option value="">{isTeachersLoading ? "Loading..." : "Select Teacher..."}</option>
                     {availableTeachers.map((t) => <option key={t.id} value={t.id}>{t.full_name}</option>)}
                 </select>
@@ -547,11 +571,12 @@ const AdminProgressView = ({ syllabus }) => {
       if (!syllabus?.id) return;
       setIsLoading(true);
       try {
-        const response = await fetch(`${API_BASE_URL}/api/syllabus/class-progress/${syllabus.id}`);
-        if (!response.ok) throw new Error("Could not load class progress.");
-        setAuditLog(await response.json());
+        // ★★★ FIX 8: Use apiClient for progress ★★★
+        const response = await apiClient.get(`/syllabus/class-progress/${syllabus.id}`);
+        setAuditLog(response.data);
       } catch (error) {
-        alert(error.message);
+        console.error("Error fetching progress:", error);
+        alert(error.response?.data?.message || "Could not load class progress.");
       } finally {
         setIsLoading(false);
       }
@@ -585,7 +610,7 @@ const AdminProgressView = ({ syllabus }) => {
                     <div key={lesson.lesson_id} className="p-5 grid grid-cols-1 md:grid-cols-4 gap-4 items-center hover:bg-slate-50/70 transition-colors">
                         <div className="md:col-span-2">
                             <h3 className="font-bold text-slate-800 text-lg">{lesson.lesson_name}</h3>
-                            <p className="text-sm text-slate-500 mt-1">Due: {new Date(lesson.due_date).toLocaleDateString()}</p>
+                            <p className="text-sm text-slate-500 mt-1">Due: {formatDate(lesson.due_date)}</p>
                         </div>
                         <div className="flex justify-start md:justify-center">
                             <StatusPill status={lesson.status} />

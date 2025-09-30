@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from "react-router-dom";
 import { useAuth } from '../../context/AuthContext.tsx';
-import { API_BASE_URL } from '../../apiConfig';
+// ★★★ 1. IMPORT apiClient AND REMOVE API_BASE_URL ★★★
+import apiClient from '../../api/client';
 import { MdErrorOutline, MdArrowBack } from 'react-icons/md';
 
 // --- Icon Components for Header (Unchanged) ---
@@ -63,20 +64,17 @@ const StudentExamScreen = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // --- Hooks for Header (Unchanged) ---
+  // --- Hooks for Header ---
   useEffect(() => {
     async function fetchUnreadNotifications() {
         if (!token) { setUnreadCount?.(0); return; }
         try {
-            const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-            if (res.ok) {
-                const data = await res.json();
-                const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                setLocalUnreadCount(count);
-                setUnreadCount?.(count);
-            } else {
-                setUnreadCount?.(0);
-            }
+            // ★★★ 2. USE apiClient FOR NOTIFICATIONS ★★★
+            const response = await apiClient.get('/notifications');
+            const data = response.data;
+            const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+            setLocalUnreadCount(count);
+            setUnreadCount?.(count);
         } catch {
             setUnreadCount?.(0);
         }
@@ -91,19 +89,16 @@ const StudentExamScreen = () => {
           if (!user?.id) { setLoadingProfile(false); return; }
           setLoadingProfile(true);
           try {
-              const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-              if (res.ok) {
-                  setProfile(await res.json());
-              } else {
-                  setProfile({
-                      id: user.id,
-                      username: user.username || "Unknown",
-                      full_name: user.full_name || "User",
-                      role: user.role || "user",
-                  });
-              }
+              // ★★★ 3. USE apiClient FOR PROFILE ★★★
+              const response = await apiClient.get(`/profiles/${user.id}`);
+              setProfile(response.data);
           } catch {
-              setProfile(null);
+              setProfile({
+                  id: user.id,
+                  username: user.username || "Unknown",
+                  full_name: user.full_name || "User",
+                  role: user.role || "user",
+              });
           } finally {
               setLoadingProfile(false);
           }
@@ -136,35 +131,32 @@ const StudentExamScreen = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/exam-schedules/class/${user.class_group}`
-      );
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error(
-            "No exam schedule has been published for your class yet."
-          );
-        }
-        throw new Error("Failed to fetch the exam schedule.");
-      }
-      const data = await response.json();
+      // ★★★ 4. USE apiClient FOR EXAM SCHEDULES - MATCHES MOBILE VERSION ★★★
+      const response = await apiClient.get(`/exam-schedules/class/${user.class_group}`);
+      const data = response.data;
       
       if (Array.isArray(data)) {
         setSchedules(data);
         if (data.length === 1) {
           setSelectedSchedule(data[0]);
           setShowList(false);
-        } else {
+        } else if (data.length > 1) {
           setSelectedSchedule(data[0]);
-          setShowList(data.length > 1);
+          setShowList(true);
+        } else { // Handle empty array case
+          throw new Error("No exam schedule has been published for your class yet.");
         }
-      } else {
+      } else { // Handle single object case
         setSchedules([data]);
         setSelectedSchedule(data);
         setShowList(false);
       }
-    } catch (e) {
-      setError(e.message);
+    } catch (error) {
+      // ★★★ 5. MATCH MOBILE ERROR HANDLING PATTERNS ★★★
+      const errorMessage = error.response?.status === 404 
+        ? "No exam schedule has been published for your class yet."
+        : error.response?.data?.message || "Failed to fetch the exam schedule.";
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }

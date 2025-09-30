@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from '../apiConfig';
+// ✅ FIXED: Updated imports
+import apiClient from '../api/client';
+import { SERVER_URL } from '../apiConfig';
 import { FaUser, FaKey, FaEdit, FaTrash, FaPlus, FaArrowLeft } from 'react-icons/fa';
 import { useAuth } from '../context/AuthContext.tsx';
 import { MdArrowBack } from 'react-icons/md'; // Added for consistent back button
+
 
 // --- Icon Components for Header ---
 function UserIcon() {
@@ -44,12 +47,14 @@ function BellIcon() {
     );
 }
 
-// Class categories and roles
+
+// ✅ FIXED: Updated constants to include 'Admins' and 'admin' role
 const CLASS_CATEGORIES = [
-    'Teachers', 'LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4',
+    'Admins', 'Teachers', 'LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4',
     'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'
 ];
-const USER_ROLES = ['student', 'teacher'];
+const USER_ROLES = ['admin', 'teacher', 'student'];
+
 
 export default function AdminLM() {
     const navigate = useNavigate();
@@ -70,36 +75,49 @@ export default function AdminLM() {
     const [currentPage, setCurrentPage] = useState(1);
     const [usersPerPage] = useState(10);
 
-    // --- Hooks for Header ---
+
+    // ✅ FIXED: Updated fetchProfile function
     useEffect(() => {
         async function fetchProfile() {
             if (!user?.id) return;
             try {
-                const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-                if (res.ok) setProfile(await res.json());
-                else setProfile({ id: user.id, username: user.username || "Unknown", full_name: user.full_name || "User", role: user.role || "user" });
-            } catch { setProfile(null); }
+                const response = await apiClient.get(`/profiles/${user.id}`);
+                setProfile(response.data);
+            } catch {
+                setProfile({ 
+                    id: user.id, 
+                    username: user.username || "Unknown", 
+                    full_name: user.full_name || "User", 
+                    role: user.role || "user" 
+                });
+            }
         }
         fetchProfile();
     }, [user]);
 
+
+    // ✅ FIXED: Updated fetchUnreadNotifications function
     useEffect(() => {
         async function fetchUnreadNotifications() {
-            if (!token) { setUnreadCount?.(0); return; }
+            if (!token) { 
+                setUnreadCount?.(0); 
+                return; 
+            }
             try {
-                const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res.ok) {
-                    const data = await res.json();
-                    const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                    setLocalUnreadCount(count);
-                    setUnreadCount?.(count);
-                } else { setUnreadCount?.(0); }
-            } catch { setUnreadCount?.(0); }
+                const response = await apiClient.get('/notifications');
+                const data = response.data;
+                const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+                setLocalUnreadCount(count);
+                setUnreadCount?.(count);
+            } catch { 
+                setUnreadCount?.(0); 
+            }
         }
         fetchUnreadNotifications();
         const id = setInterval(fetchUnreadNotifications, 60000);
         return () => clearInterval(id);
     }, [token, setUnreadCount]);
+
 
     // --- Helper Functions ---
     const handleLogout = () => {
@@ -109,31 +127,39 @@ export default function AdminLM() {
         }
     };
 
+
+    // ✅ FIXED: Updated fetchUsers function
     const fetchUsers = async () => {
         try {
             setIsLoading(true);
-            const response = await fetch(`${API_BASE_URL}/api/users`);
-            if (!response.ok) throw new Error('Failed to fetch data from the server.');
-            const data = await response.json();
-            setUsers(data);
+            const response = await apiClient.get('/users');
+            setUsers(response.data);
         } catch (error) {
-            alert('Network Error: ' + error.message);
+            alert(error.response?.data?.message || 'Failed to fetch users.');
         } finally {
             setIsLoading(false);
         }
     };
 
+
     useEffect(() => {
         fetchUsers();
     }, []);
 
+
+    // ✅ FIXED: Updated groupedUsers to handle Admins
     const groupedUsers = useMemo(() => {
         const groups = {};
         CLASS_CATEGORIES.forEach(category => {
-            groups[category] = users.filter(user => user.class_group === category);
+            if (category === 'Admins') {
+                groups[category] = users.filter(user => user.role === 'admin');
+            } else {
+                groups[category] = users.filter(user => user.class_group === category);
+            }
         });
         return groups;
     }, [users]);
+
 
     const handleSelectClass = (className) => {
         setSelectedClass(className);
@@ -141,11 +167,13 @@ export default function AdminLM() {
         setSearchQuery("");
     };
 
+
     const openAddModal = () => {
         setEditingUser(null);
         setFormData({ username: '', password: '', full_name: '', role: 'student', class_group: 'LKG', subjects_taught: [] });
         setIsModalVisible(true);
     };
+
 
     const openEditModal = (user) => {
         setEditingUser(user);
@@ -153,50 +181,77 @@ export default function AdminLM() {
         setIsModalVisible(true);
     };
 
+
+    // ✅ FIXED: Updated handleSave function
     const handleSave = async () => {
-        if (!formData.username || !formData.full_name) return alert('Username and Full Name are required.');
-        if (!editingUser && !formData.password) return alert('Password is required for new users.');
+        if (!formData.username || !formData.full_name) {
+            return alert('Username and Full Name are required.');
+        }
+        if (!editingUser && !formData.password) {
+            return alert('Password is required for new users.');
+        }
+        
         const payload = { ...formData };
-        if (payload.role === 'student') delete payload.subjects_taught;
+        if (editingUser && !payload.password) {
+            delete payload.password; // Don't send empty password for updates
+        }
+        if (payload.role === 'student' || payload.role === 'admin') {
+            delete payload.subjects_taught; // Students and admins don't have subjects
+        }
+        if (payload.role === 'admin') {
+            payload.class_group = 'Admins'; // Auto-assign Admins group
+        }
+        
         const isEditing = !!editingUser;
-        const url = isEditing ? `${API_BASE_URL}/api/users/${editingUser.id}` : `${API_BASE_URL}/api/users`;
-        const method = isEditing ? 'PUT' : 'POST';
+        
         try {
-            const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.message);
+            if (isEditing) {
+                await apiClient.put(`/users/${editingUser.id}`, payload);
+            } else {
+                await apiClient.post('/users', payload);
+            }
+            
             alert(`User ${isEditing ? 'updated' : 'created'} successfully!`);
             setIsModalVisible(false);
             setEditingUser(null);
             fetchUsers();
         } catch (error) {
-            alert('Save Failed: ' + error.message);
+            alert(error.response?.data?.message || 'An error occurred while saving.');
         }
     };
 
+
+    // ✅ FIXED: Updated handleDelete function
     const handleDelete = (user) => {
         if (window.confirm(`Are you sure you want to delete "${user.full_name}"?`)) {
-            fetch(`${API_BASE_URL}/api/users/${user.id}`, { method: 'DELETE' })
-                .then(res => {
-                    if (!res.ok) throw new Error('Failed to delete the user.');
+            apiClient.delete(`/users/${user.id}`)
+                .then(() => {
                     alert(`"${user.full_name}" was removed successfully.`);
                     fetchUsers();
                 })
-                .catch(error => alert('Error: ' + error.message));
+                .catch(error => {
+                    alert(error.response?.data?.message || 'Failed to delete the user.');
+                });
         }
     };
 
+
+    // ✅ FIXED: Updated handleResetPassword function
     const handleResetPassword = (user) => {
         const newPassword = prompt(`Enter a new temporary password for "${user.full_name}":`);
-        if (!newPassword || newPassword.trim() === '') return alert('Password cannot be empty.');
-        fetch(`${API_BASE_URL}/api/users/${user.id}/reset-password`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ newPassword }) })
-            .then(async res => {
-                const result = await res.json();
-                if (!res.ok) throw new Error(result.message);
-                alert(result.message);
+        if (!newPassword || newPassword.trim() === '') {
+            return alert('Password cannot be empty.');
+        }
+        
+        apiClient.patch(`/users/${user.id}/reset-password`, { newPassword })
+            .then(response => {
+                alert(response.data.message);
             })
-            .catch(error => alert('Reset Failed: ' + error.message));
+            .catch(error => {
+                alert(error.response?.data?.message || 'An unknown error occurred.');
+            });
     };
+
 
     const getDefaultDashboardRoute = () => {
         if (!user) return '/';
@@ -204,6 +259,7 @@ export default function AdminLM() {
         if (user.role === 'teacher') return '/TeacherDashboard';
         return '/';
     };
+
 
     // --- Data processing for the current view ---
     const usersInSelectedClass = useMemo(() => {
@@ -214,15 +270,19 @@ export default function AdminLM() {
         );
     }, [selectedClass, groupedUsers, searchQuery]);
 
+
     const currentUsersOnPage = usersInSelectedClass.slice((currentPage - 1) * usersPerPage, currentPage * usersPerPage);
     const totalPages = Math.ceil(usersInSelectedClass.length / usersPerPage);
     const paginate = (pageNumber) => setCurrentPage(pageNumber);
+
 
     if (isLoading) {
         return <div className="min-h-screen flex items-center justify-center"><p>Loading...</p></div>;
     }
 
+
     const isEditing = !!editingUser;
+
 
     return (
         <div className="min-h-screen bg-slate-100">
@@ -271,6 +331,7 @@ export default function AdminLM() {
                             <span>Back to Dashboard</span>
                         </button>
                     </div>
+
 
                     <div className="flex flex-col sm:flex-row sm:justify-end sm:items-center mb-6">
                         <button onClick={openAddModal} className="flex items-center justify-center bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-xl shadow-lg hover:shadow-xl hover:from-blue-600 hover:to-blue-700 transition-all duration-200 transform hover:scale-105 font-medium">
@@ -322,6 +383,7 @@ export default function AdminLM() {
                                     <input type="text" placeholder="Search in this class..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full sm:w-auto rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                                 </div>
 
+
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-sm text-left text-slate-500 rounded-lg overflow-hidden">
                                         <thead className="text-xs text-slate-700 uppercase bg-slate-200">
@@ -338,7 +400,7 @@ export default function AdminLM() {
                                                     <td className="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">{user.full_name}</td>
                                                     <td className="px-6 py-4">{user.username}</td>
                                                     <td className="px-6 py-4">
-                                                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${user.role === 'teacher' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>
+                                                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${user.role === 'admin' ? 'bg-purple-100 text-purple-800' : user.role === 'teacher' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>
                                                             {user.role}
                                                         </span>
                                                     </td>
@@ -388,7 +450,12 @@ export default function AdminLM() {
                                          </div>
                                          <div>
                                              <label className="block text-sm font-semibold text-gray-700 mb-2">Role:</label>
-                                             <select className="w-full border-2 border-gray-200 px-4 py-3 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20" value={formData.role || 'student'} onChange={(e) => setFormData({ ...formData, role: e.target.value, class_group: e.target.value === 'teacher' ? 'Teachers' : formData.class_group || 'LKG' })}>
+                                             <select className="w-full border-2 border-gray-200 px-4 py-3 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20" value={formData.role || 'student'} onChange={(e) => {
+                                                 const newRole = e.target.value;
+                                                 const newClassGroup = newRole === 'teacher' ? 'Teachers' : 
+                                                                      (newRole === 'admin' ? 'Admins' : formData.class_group || 'LKG');
+                                                 setFormData({ ...formData, role: newRole, class_group: newClassGroup });
+                                             }}>
                                                  {USER_ROLES.map(role => <option key={role} value={role}>{role.charAt(0).toUpperCase() + role.slice(1)}</option>)}
                                              </select>
                                          </div>
@@ -397,14 +464,14 @@ export default function AdminLM() {
                                                  <label className="block text-sm font-semibold text-gray-700 mb-2">Subjects Taught (comma-separated):</label>
                                                  <input type="text" className="w-full border-2 border-gray-200 px-4 py-3 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20" placeholder="e.g., Mathematics, Science" value={formData.subjects_taught?.join(', ') || ''} onChange={(e) => setFormData({ ...formData, subjects_taught: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} />
                                              </div>
-                                         ) : (
+                                         ) : formData.role === 'student' ? (
                                              <div>
                                                  <label className="block text-sm font-semibold text-gray-700 mb-2">Class / Group:</label>
                                                  <select className="w-full border-2 border-gray-200 px-4 py-3 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20" value={formData.class_group || 'LKG'} onChange={(e) => setFormData({ ...formData, class_group: e.target.value })}>
-                                                     {CLASS_CATEGORIES.filter(c => c !== 'Teachers').map(level => <option key={level} value={level}>{level}</option>)}
+                                                     {CLASS_CATEGORIES.filter(c => c !== 'Teachers' && c !== 'Admins').map(level => <option key={level} value={level}>{level}</option>)}
                                                  </select>
                                              </div>
-                                         )}
+                                         ) : null}
                                      </div>
                                      <div className="flex flex-col sm:flex-row justify-between space-y-3 sm:space-y-0 sm:space-x-4 mt-8">
                                          <button className="flex-1 bg-gradient-to-r from-gray-400 to-gray-500 px-6 py-3 rounded-xl text-white font-semibold hover:from-gray-500 hover:to-gray-600 shadow-lg hover:shadow-xl transform hover:scale-105" onClick={() => setIsModalVisible(false)}>Cancel</button>

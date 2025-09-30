@@ -1,8 +1,8 @@
-// src/context/AuthContext.tsx
-
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
 import storage from '../utils/storage';
-import { API_BASE_URL } from '../apiConfig'; // ✅ Use same config as DashboardHeader
+import apiClient from '../api/client'; // ★ 1. IMPORT the central API client
+import { API_BASE_URL } from '../apiConfig';
+import { SERVER_URL } from '../apiConfig';
 
 // Types for user and context state
 interface User {
@@ -10,7 +10,7 @@ interface User {
   username: string;
   full_name: string;
   role: 'admin' | 'teacher' | 'student' | 'donor';
-  profile_image_url?: string; // ✅ optional (in case backend doesn't return)
+  profile_image_url?: string;
 }
 
 interface AuthContextType {
@@ -35,18 +35,20 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
-  
-  // ✅ NEW: Add state for profile image URL
-  const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
 
+  // Effect to load session from storage on app start
   useEffect(() => {
-    const loadUserAndToken = async () => {
+    const loadSession = async () => {
       try {
         const userString = await storage.get('userSession');
         const tokenString = await storage.get('userToken');
 
         if (userString && tokenString) {
           const userObj: User = JSON.parse(userString);
+          
+          // ★ CONFIGURE apiClient when the app loads with a stored token
+          apiClient.defaults.headers.common['Authorization'] = `Bearer ${tokenString}`;
+
           setUser(userObj);
           setToken(tokenString);
         }
@@ -59,44 +61,47 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       }
     };
 
-    loadUserAndToken();
+    loadSession();
   }, []);
 
-  // ✅ NEW: Fetch profile data after user is loaded
+  // Effect to fetch and update profile data once authenticated
   useEffect(() => {
-    const fetchProfile = async () => {
-      if (!user?.id || !token) {
-        setProfileImageUrl(null);
+    const fetchProfileAndUpdate = async () => {
+      // We need user.id to make the call, so we wait for it.
+      if (!user?.id) {
         return;
       }
       
       try {
         console.log(`Fetching profile for user ID: ${user.id}`);
-        const response = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const response = await apiClient.get(`/profiles/${user.id}`); // ✅ Remove /api prefix
+
         
-        if (response.ok) {
-          const profileData = await response.json();
-          console.log('Profile data fetched:', profileData);
-          setProfileImageUrl(profileData.profile_image_url || null);
-        } else {
-          console.error('Failed to fetch profile:', response.status, response.statusText);
-          setProfileImageUrl(null);
+        if (response.data) {
+          console.log('Profile data fetched:', response.data);
+          // ✅ Merge fetched data and update the user state object
+          const updatedUser = { ...user, ...response.data };
+          setUser(updatedUser);
+          
+          // ✅ Persist the updated user object to storage for the next session
+          await storage.set('userSession', JSON.stringify(updatedUser));
         }
       } catch (error) {
-        console.error('AuthContext: Failed to fetch profile image', error);
-        setProfileImageUrl(null);
+        console.error('AuthContext: Failed to fetch profile data', error);
       }
     };
 
-    if (user && token) {
-      fetchProfile();
+    // Run this fetch logic whenever the token is set (on login or app load)
+    if (token) {
+      fetchProfileAndUpdate();
     }
-  }, [user, token]);
+  }, [token]); // This effect now correctly depends only on the token
 
   const login = async (user: User, token: string) => {
     try {
+      // ★ CONFIGURE apiClient on successful login
+      apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
       setUser(user);
       setToken(token);
       await storage.set('userSession', JSON.stringify(user));
@@ -108,38 +113,27 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const logout = async () => {
     try {
+      // ★ REMOVE token from apiClient on logout
+      delete apiClient.defaults.headers.common['Authorization'];
+
       setUser(null);
       setToken(null);
       setUnreadCount(0);
-      setProfileImageUrl(null); // ✅ Clear profile image on logout
       await storage.multiRemove(['userSession', 'userToken']);
     } catch (e) {
       console.error('AuthContext: Failed to clear session', e);
     }
   };
+  
 
-  // ✅ UPDATED: Use fetched profile image URL
-  const getProfileImageUrl = () => {
-    // First check the fetched profile image URL
-    if (profileImageUrl) {
-      const url = profileImageUrl.startsWith('/')
-        ? `${API_BASE_URL}${profileImageUrl}`
-        : profileImageUrl;
-      console.log('Using fetched profile image URL:', url);
-      return url;
-    }
-    
-    // Fallback to user object (in case profile fetch failed but login had it)
+  // ✅ SIMPLIFIED: Now reads directly from the always-updated user object
+   const getProfileImageUrl = () => {
     if (user?.profile_image_url) {
-      const url = user.profile_image_url.startsWith('/')
-        ? `${API_BASE_URL}${user.profile_image_url}`
-        : user.profile_image_url;
-      console.log('Using user profile image URL:', url);
+      const url = (user.profile_image_url.startsWith('http') || user.profile_image_url.startsWith('file'))
+        ? user.profile_image_url
+        : `${SERVER_URL}${user.profile_image_url}`;
       return url;
     }
-    
-    // Final fallback
-    console.log('Using default profile image');
     return '/assets/profile.png';
   };
 
@@ -153,7 +147,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         isLoading,
         unreadCount,
         setUnreadCount,
-        getProfileImageUrl, // ✅ This now uses fetched profile data
+        getProfileImageUrl,
       }}
     >
       {children}
@@ -166,3 +160,4 @@ export const useAuth = () => {
   if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };
+

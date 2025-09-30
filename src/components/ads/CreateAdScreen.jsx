@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import apiClient, { API_BASE_URL } from '../../api/client.js';
+import apiClient from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.tsx';
 import { MdArrowBack, MdCloudUpload, MdImage, MdReceipt, MdClose } from 'react-icons/md';
+// ✅ FIXED: Updated imports
+import { SERVER_URL } from '../../apiConfig';
+
 
 // --- Icon Components for Header ---
 function UserIcon() {
@@ -14,6 +17,7 @@ function UserIcon() {
   );
 }
 
+
 function HomeIcon() {
   return (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
@@ -22,6 +26,7 @@ function HomeIcon() {
     </svg>
   );
 }
+
 
 function CalendarIcon() {
   return (
@@ -33,6 +38,7 @@ function CalendarIcon() {
     </svg>
   );
 }
+
 
 function BellIcon() {
   return (
@@ -46,16 +52,19 @@ function BellIcon() {
   );
 }
 
+
 const CreateAdScreen = ({ navigation }) => {
   const { user, token, logout, getProfileImageUrl, setUnreadCount } = useAuth();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
+
 
   // --- State for Header ---
   const [profile, setProfile] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [unreadCount, setLocalUnreadCount] = useState(0);
   const [query, setQuery] = useState("");
+
 
   // --- STATE MANAGEMENT ---
   const [adminView, setAdminView] = useState('create'); // 'create' or 'manage' for admin
@@ -75,20 +84,17 @@ const CreateAdScreen = ({ navigation }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDetailsLoading, setIsDetailsLoading] = useState(true);
 
-  // --- Hooks for Header Functionality ---
+
+  // ✅ FIXED: Updated fetchUnreadNotifications function
   useEffect(() => {
     async function fetchUnreadNotifications() {
       if (!token) { setUnreadCount?.(0); return; }
       try {
-        const res = await fetch(`${API_BASE_URL}/api/notifications`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-          setLocalUnreadCount(count);
-          setUnreadCount?.(count);
-        } else { setUnreadCount?.(0); }
+        const response = await apiClient.get('/notifications');
+        const data = response.data;
+        const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+        setLocalUnreadCount(count);
+        setUnreadCount?.(count);
       } catch { setUnreadCount?.(0); }
     }
     fetchUnreadNotifications();
@@ -96,30 +102,29 @@ const CreateAdScreen = ({ navigation }) => {
     return () => clearInterval(id);
   }, [token, setUnreadCount]);
 
+
+  // ✅ FIXED: Updated fetchProfile function
   useEffect(() => {
     async function fetchProfile() {
       if (!user?.id) { setLoadingProfile(false); return; }
       setLoadingProfile(true);
       try {
-        const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-        if (res.ok) {
-          setProfile(await res.json());
-        } else {
-          setProfile({
-            id: user.id,
-            username: user.username || "Unknown",
-            full_name: user.full_name || "User",
-            role: user.role || "user",
-          });
-        }
+        const response = await apiClient.get(`/profiles/${user.id}`);
+        setProfile(response.data);
       } catch {
-        setProfile(null);
+        setProfile({
+          id: user.id,
+          username: user.username || "Unknown",
+          full_name: user.full_name || "User",
+          role: user.role || "user",
+        });
       } finally {
         setLoadingProfile(false);
       }
     }
     fetchProfile();
   }, [user]);
+
 
   // --- Helper Functions ---
   const handleLogout = () => {
@@ -129,6 +134,7 @@ const CreateAdScreen = ({ navigation }) => {
     }
   };
 
+
   const getDefaultDashboardRoute = () => {
     if (!user) return '/';
     if (user.role === 'admin') return '/AdminDashboard';
@@ -136,6 +142,7 @@ const CreateAdScreen = ({ navigation }) => {
     if (user.role === 'student') return '/StudentDashboard';
     return '/';
   };
+
 
   const handleBackClick = () => {
     navigate(getDefaultDashboardRoute());
@@ -164,6 +171,7 @@ const CreateAdScreen = ({ navigation }) => {
       feedbackEl.textContent = message;
       document.body.appendChild(feedbackEl);
 
+
       setTimeout(() => {
         feedbackEl.style.opacity = '1';
         feedbackEl.style.transform = 'translateY(0)';
@@ -176,11 +184,12 @@ const CreateAdScreen = ({ navigation }) => {
       }, 4000);
   };
 
-  // --- DATA FETCHING ---
+
+  // ✅ FIXED: Updated fetchAdPaymentDetails function
   const fetchAdPaymentDetails = useCallback(async () => {
     setIsDetailsLoading(true);
     try {
-      const { data } = await apiClient.get('/api/ad-payment-details');
+      const { data } = await apiClient.get('/ad-payment-details');
       setDbPaymentDetails(data || {});
       setFormDetails({
         ad_amount: String(data?.ad_amount || ''),
@@ -196,7 +205,9 @@ const CreateAdScreen = ({ navigation }) => {
     }
   }, []);
 
+
   useEffect(() => { fetchAdPaymentDetails(); }, [fetchAdPaymentDetails]);
+
 
   // --- IMAGE HANDLING ---
   const handleImageSelect = (setState) => {
@@ -221,7 +232,8 @@ const CreateAdScreen = ({ navigation }) => {
     input.click();
   };
 
-  // --- HANDLER FUNCTIONS ---
+
+  // ✅ FIXED: Updated handleCreateAd function
   const handleCreateAd = async () => {
     if (!adImage) {
       showFeedback('Missing Ad Image: Please select an image.', 'error');
@@ -244,7 +256,7 @@ const CreateAdScreen = ({ navigation }) => {
     }
 
     try {
-      const { data } = await apiClient.post('/api/ads', formData, {
+      const { data } = await apiClient.post('/ads', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       showFeedback('Success! ' + data.message);
@@ -256,6 +268,8 @@ const CreateAdScreen = ({ navigation }) => {
     }
   };
 
+
+  // ✅ FIXED: Updated handleSaveChanges function
   const handleSaveChanges = async () => {
     setIsSubmitting(true);
     const formData = new FormData();
@@ -268,7 +282,7 @@ const CreateAdScreen = ({ navigation }) => {
       formData.append('qrCodeImage', newQrImage.file);
     }
     try {
-      const { data } = await apiClient.post('/api/admin/ad-payment-details', formData, {
+      const { data } = await apiClient.post('/admin/ad-payment-details', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       showFeedback('Success: ' + data.message);
@@ -287,8 +301,10 @@ const CreateAdScreen = ({ navigation }) => {
     </div>
   );
 
+
   const renderContent = () => {
     if(loadingProfile || isDetailsLoading) return renderLoading();
+
 
     if(isAdmin) {
       return (
@@ -327,6 +343,7 @@ const CreateAdScreen = ({ navigation }) => {
       );
     }
 
+
     // Default view for non-admin users
     return <UserAdCreation
         isAdmin={false}
@@ -340,6 +357,7 @@ const CreateAdScreen = ({ navigation }) => {
         dbPaymentDetails={dbPaymentDetails}
     />
   }
+
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -396,6 +414,7 @@ const CreateAdScreen = ({ navigation }) => {
             </div>
         </header>
 
+
         <main className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-6 sm:py-8">
             <div className="mb-6">
                 <button onClick={handleBackClick} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors">
@@ -407,6 +426,7 @@ const CreateAdScreen = ({ navigation }) => {
     </div>
   );
 };
+
 
 const UserAdCreation = ({ isAdmin, adText, setAdText, adImage, setAdImage, paymentProof, setPaymentProof, paymentText, setPaymentText, handleImageSelect, handleCreateAd, isSubmitting, dbPaymentDetails }) => {
   return (
@@ -420,12 +440,14 @@ const UserAdCreation = ({ isAdmin, adText, setAdText, adImage, setAdImage, payme
             <ImageUploader image={adImage} onSelect={() => handleImageSelect(setAdImage)} icon={<MdImage className="w-8 h-8 text-indigo-500"/>} onClear={() => setAdImage(null)}/>
         </div>
 
+
         {/* Step 2 */}
         <div>
             <h3 className="text-lg font-bold text-slate-800 mb-1">Step 2: Add Text (Optional)</h3>
             <p className="text-sm text-slate-500 mb-4">Add a short caption or text for your ad.</p>
             <input type="text" className="w-full px-4 py-3 rounded-lg border border-slate-300 bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition" placeholder="e.g., Annual Sports Day this Saturday!" value={adText} onChange={(e) => setAdText(e.target.value)} />
         </div>
+
 
         {/* Payment sections are hidden for admins */}
         {!isAdmin && (
@@ -446,12 +468,14 @@ const UserAdCreation = ({ isAdmin, adText, setAdText, adImage, setAdImage, payme
           </>
         )}
 
+
         <div className="border-t border-slate-200 pt-6 flex justify-end">
           <button onClick={handleCreateAd} disabled={isSubmitting} className="bg-indigo-600 text-white font-bold py-3 px-8 rounded-lg shadow-lg hover:bg-indigo-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[200px]">
             {isSubmitting ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : (isAdmin ? "Post Ad (Free)" : "Submit Ad for Review")}
           </button>
         </div>
       </div>
+
 
       {/* Right Column: Payment Details (hidden for admins) */}
       {!isAdmin && (
@@ -462,6 +486,7 @@ const UserAdCreation = ({ isAdmin, adText, setAdText, adImage, setAdImage, payme
     </div>
   );
 };
+
 
 const AdminPaymentEditor = ({ dbPaymentDetails, formDetails, setFormDetails, newQrImage, handleImageSelect, setNewQrImage, handleSaveChanges, isSubmitting }) => (
     <div className="bg-slate-50 rounded-2xl shadow-lg border border-slate-200/80 p-6 md:p-8 space-y-8">
@@ -474,7 +499,7 @@ const AdminPaymentEditor = ({ dbPaymentDetails, formDetails, setFormDetails, new
             <div className="space-y-4">
                 <h3 className="font-bold text-slate-700">QR Code</h3>
                 <ImageUploader 
-                    image={newQrImage || (dbPaymentDetails.qr_code_url ? { uri: `${API_BASE_URL}${dbPaymentDetails.qr_code_url}` } : null)}
+                    image={newQrImage || (dbPaymentDetails.qr_code_url ? { uri: `${SERVER_URL}${dbPaymentDetails.qr_code_url}` } : null)}
                     onSelect={() => handleImageSelect(setNewQrImage)}
                     onClear={() => setNewQrImage(null)}
                     icon={<MdImage className="w-8 h-8 text-indigo-500"/>}
@@ -513,6 +538,7 @@ const AdminPaymentEditor = ({ dbPaymentDetails, formDetails, setFormDetails, new
     </div>
 );
 
+
 const PaymentDetailsCard = ({ details }) => {
     const hasDetails = details && details.account_holder_name;
     return (
@@ -524,7 +550,7 @@ const PaymentDetailsCard = ({ details }) => {
                 <>
                     {details.qr_code_url && (
                         <div className="text-center">
-                            <img src={`${API_BASE_URL}${details.qr_code_url}`} alt="QR Code" className="w-48 h-48 object-contain mx-auto rounded-lg shadow-md bg-white border border-slate-200" />
+                            <img src={`${SERVER_URL}${details.qr_code_url}`} alt="QR Code" className="w-48 h-48 object-contain mx-auto rounded-lg shadow-md bg-white border border-slate-200" />
                             <p className="text-sm text-slate-500 mt-2">Scan QR code to pay</p>
                         </div>
                     )}
@@ -548,6 +574,7 @@ const PaymentDetailsCard = ({ details }) => {
     );
 };
 
+
 const ImageUploader = ({ image, onSelect, icon, onClear }) => (
     <div onClick={!image ? onSelect : undefined} className="relative aspect-video w-full border-2 border-dashed border-slate-300 rounded-xl flex justify-center items-center bg-white cursor-pointer hover:bg-slate-50 hover:border-indigo-500 transition-all duration-300 group">
         {image ? (
@@ -567,5 +594,6 @@ const ImageUploader = ({ image, onSelect, icon, onClear }) => (
         )}
     </div>
 );
+
 
 export default CreateAdScreen;

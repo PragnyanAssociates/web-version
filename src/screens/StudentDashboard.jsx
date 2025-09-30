@@ -4,6 +4,8 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "../context/AuthContext.tsx"
 import { API_BASE_URL } from "../apiConfig"
+import { SERVER_URL } from '../apiConfig';
+import apiClient from '../api/client.js';
 import centerImage from "../assets/centerimage.png"
 
 function UserIcon() {
@@ -44,6 +46,43 @@ function BellIcon() {
         d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-5-5.917V4a1 1 0 10-2 0v1.083A6 6 0 006 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
       />
     </svg>
+  )
+}
+
+// New ProfileAvatar component with user placeholder
+function ProfileAvatar() {
+  const { getProfileImageUrl } = useAuth()
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  
+  const hasValidImage = getProfileImageUrl() && !imageError && imageLoaded
+  
+  return (
+    <div className="relative w-7 h-7 sm:w-9 sm:h-9">
+      {/* Always render the user placeholder */}
+      <div className={`absolute inset-0 rounded-full bg-gray-100 flex items-center justify-center border-2 border-slate-400 transition-opacity duration-200 ${hasValidImage ? 'opacity-0' : 'opacity-100'}`}>
+        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
+        </svg>
+      </div>
+      
+      {/* Profile image overlay */}
+      {getProfileImageUrl() && (
+        <img 
+          src={getProfileImageUrl()} 
+          alt="Profile" 
+          className={`absolute inset-0 w-full h-full rounded-full border border-slate-200 object-cover transition-opacity duration-200 ${hasValidImage ? 'opacity-100' : 'opacity-0'}`}
+          onError={() => {
+            setImageError(true)
+            setImageLoaded(false)
+          }}
+          onLoad={() => {
+            setImageError(false)
+            setImageLoaded(true)
+          }}
+        />
+      )}
+    </div>
   )
 }
 
@@ -174,6 +213,12 @@ const allQuickAccessItems = [
     imageSource: "https://cdn-icons-png.flaticon.com/128/745/745205.png",
     navigateTo: "/GroupChatScreen",
   },
+   {
+    id: "qa27",
+    title: "Online Classes",
+    imageSource: "https://cdn-icons-png.flaticon.com/128/2922/2922510.png",
+    navigateTo: "/OnlineClassScreen",
+  }
 ]
 
 export default function StudentDashboard() {
@@ -186,60 +231,51 @@ export default function StudentDashboard() {
   const [query, setQuery] = useState("")
   const [showAllMobile, setShowAllMobile] = useState(false)
 
-  // Fetch unread notifications count (poll every 60s)
   useEffect(() => {
-    async function fetchUnreadNotifications() {
-      if (!token) {
-        setUnreadCount?.(0)
-        return
-      }
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/notifications`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (res.ok) {
-          const data = await res.json()
-          const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0
-          setUnreadCount?.(count)
-        } else {
-          setUnreadCount?.(0)
-        }
-      } catch {
-        setUnreadCount?.(0)
-      }
+  async function fetchUnreadNotifications() {
+    if (!token) {
+      setUnreadCount?.(0)
+      return
     }
-    fetchUnreadNotifications()
-    const id = setInterval(fetchUnreadNotifications, 60000)
-    return () => clearInterval(id)
-  }, [token, setUnreadCount])
+    try {
+      const res = await apiClient.get('/notifications')
+      const data = Array.isArray(res.data) ? res.data : []
+      const count = data.filter((n) => !n.is_read).length
+      setUnreadCount?.(count)
+    } catch (error) {
+      console.error('Failed to fetch notifications:', error)
+      setUnreadCount?.(0)
+    }
+  }
+  
+  fetchUnreadNotifications()
+  const intervalId = setInterval(fetchUnreadNotifications, 60000) // Poll every minute
+  return () => clearInterval(intervalId)
+}, [token, setUnreadCount])
 
   useEffect(() => {
-    async function fetchProfile() {
-      if (!user?.id) {
-        setLoadingProfile(false)
-        return
-      }
-      setLoadingProfile(true)
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`)
-        if (res.ok) {
-          setProfile(await res.json())
-        } else {
-          setProfile({
-            id: user.id,
-            username: user.username || "Unknown",
-            full_name: user.full_name || "Student",
-            role: user.role || "student",
-          })
-        }
-      } catch {
-        setProfile(null)
-      } finally {
-        setLoadingProfile(false)
-      }
+  async function fetchProfile() {
+    if (!user?.id) {
+      setLoadingProfile(false)
+      return
     }
-    fetchProfile()
-  }, [user])
+    setLoadingProfile(true)
+    try {
+      const res = await apiClient.get(`/profiles/${user.id}`)
+      setProfile(res.data)
+    } catch {
+      setProfile({
+        id: user.id,
+        username: user.username || "Unknown",
+        full_name: user.full_name || "Student",
+        role: user.role || "student",
+      })
+    } finally {
+      setLoadingProfile(false)
+    }
+  }
+  fetchProfile()
+}, [user])
 
   const handleLogout = () => {
     if (window.confirm("Are you sure you want to log out?")) {
@@ -247,7 +283,6 @@ export default function StudentDashboard() {
       navigate("/")
     }
   }
-
   // Filter quick access by search query
   const filteredItems = allQuickAccessItems.filter((i) => i.title.toLowerCase().includes(query.trim().toLowerCase()))
 
@@ -259,7 +294,6 @@ export default function StudentDashboard() {
     { id: "kpi-grade", label: "Average", value: "A-" },
   ]
 
-  
   let mainContent = (
   <>
     {/* This now has a small default margin for mobile, and the original margins for sm and up. */}
@@ -613,16 +647,12 @@ export default function StudentDashboard() {
       </section>
     </>
   )
-  
 
   return (
-    // Applied bg-slate-50 to the main container div
     <div className="min-h-screen bg-slate-50"> 
       {/* Top Bar */}
-      {/* Applied bg-slate-50 to the header */}
      <header className="border-b border-slate-200 bg-slate-50">
   <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-2">
-    {/* This parent div now wraps elements on mobile */}
     <div className="flex flex-wrap items-center justify-between gap-y-3 gap-x-4">
       
       {/* Title section is now full-width on mobile */}
@@ -651,21 +681,21 @@ export default function StudentDashboard() {
 
       <div className="h-px w-full bg-slate-200 my-1 sm:hidden" aria-hidden="true" />
 
-      {/* Profile section is now full-width and justified on mobile */}
+      {/* Profile section with new ProfileAvatar component */}
       <div className="w-full flex items-center justify-between gap-2 sm:w-auto sm:justify-start sm:gap-3">
-        {/* All profile items are now in a single flex container to stay grouped together */}
-<div className="w-full flex items-center justify-end gap-2 sm:w-auto sm:gap-3">
-    <img src={getProfileImageUrl() || "/placeholder.svg"} alt="Profile" className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover" onError={(e) => { e.currentTarget.src = "/assets/profile.png" }} />
-    <div className="hidden sm:flex flex-col">
-        <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">{profile?.full_name || profile?.username || "User"}</span>
-        <span className="text-xs text-slate-600 capitalize">{profile?.role || ""}</span>
-    </div>
-    <button onClick={handleLogout} className="inline-flex items-center rounded-md bg-blue-600 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><span className="hidden sm:inline">Logout</span><span className="sm:hidden">Exit</span></button>
-    <button onClick={() => navigate("/NotificationsScreen")} className="relative inline-flex items-center justify-center rounded-full border border-slate-200 bg-white p-1.5 sm:p-2 text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="Notifications" title="Notifications" type="button">
-        <BellIcon />
-        {unreadCount > 0 && (<span className="absolute -top-0.5 sm:-top-1 -right-0.5 sm:-right-1 px-1 sm:px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-white bg-red-600 rounded-full min-w-[16px] sm:min-w-[18px]">{unreadCount > 99 ? "99+" : unreadCount}</span>)}
-    </button>
-</div>
+        <div className="w-full flex items-center justify-end gap-2 sm:w-auto sm:gap-3">
+          <ProfileAvatar />
+          
+          <div className="hidden sm:flex flex-col">
+            <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">{profile?.full_name || profile?.username || "User"}</span>
+            <span className="text-xs text-slate-600 capitalize">{profile?.role || ""}</span>
+          </div>
+          <button onClick={handleLogout} className="inline-flex items-center rounded-md bg-blue-600 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><span className="hidden sm:inline">Logout</span><span className="sm:hidden">Exit</span></button>
+          <button onClick={() => navigate("/NotificationsScreen")} className="relative inline-flex items-center justify-center rounded-full border border-slate-200 bg-white p-1.5 sm:p-2 text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="Notifications" title="Notifications" type="button">
+            <BellIcon />
+            {unreadCount > 0 && (<span className="absolute -top-0.5 sm:-top-1 -right-0.5 sm:-right-1 px-1 sm:px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-white bg-red-600 rounded-full min-w-[16px] sm:min-w-[18px]">{unreadCount > 99 ? "99+" : unreadCount}</span>)}
+          </button>
+        </div>
       </div>
     </div>
 

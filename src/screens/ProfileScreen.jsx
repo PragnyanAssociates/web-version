@@ -3,10 +3,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from '../apiConfig';
-import { MdArrowBack, MdSave, MdCancel, MdEdit } from 'react-icons/md';
+import { SERVER_URL } from '../apiConfig';
+import apiClient from '../api/client';
+import { MdArrowBack, MdEdit } from 'react-icons/md';
 
-// --- Icon Components for Header (Unchanged) ---
+// --- Icon Components for Header ---
 function UserIcon() {
     return (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
@@ -48,55 +49,96 @@ function BellIcon() {
     );
 }
 
+// ProfileAvatar component ONLY for header
+function ProfileAvatar() {
+  const { getProfileImageUrl } = useAuth()
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  
+  const hasValidImage = getProfileImageUrl() && !imageError && imageLoaded
+  
+  return (
+    <div className="relative w-7 h-7 sm:w-9 sm:h-9">
+      {/* Always render the user placeholder */}
+      <div className={`absolute inset-0 rounded-full bg-gray-100 flex items-center justify-center border-2 border-slate-400 transition-opacity duration-200 ${hasValidImage ? 'opacity-0' : 'opacity-100'}`}>
+        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
+        </svg>
+      </div>
+      
+      {/* Profile image overlay */}
+      {getProfileImageUrl() && (
+        <img 
+          src={getProfileImageUrl()} 
+          alt="Profile" 
+          className={`absolute inset-0 w-full h-full rounded-full border border-slate-200 object-cover transition-opacity duration-200 ${hasValidImage ? 'opacity-100' : 'opacity-0'}`}
+          onError={() => {
+            setImageError(true)
+            setImageLoaded(false)
+          }}
+          onLoad={() => {
+            setImageError(false)
+            setImageLoaded(true)
+          }}
+        />
+      )}
+    </div>
+  )
+}
 
+// --- MAIN COMPONENT ---
 export default function ProfileScreen({ onBackPress, staticProfileData, onStaticSave, onProfileUpdate }) {
     const { user, token, logout, getProfileImageUrl, setUnreadCount } = useAuth();
     const navigate = useNavigate();
 
-    // --- State for Header ---
+    // States
     const [headerProfile, setHeaderProfile] = useState(null);
     const [localUnreadCount, setLocalUnreadCount] = useState(0);
     const [headerQuery, setHeaderQuery] = useState("");
-
-    // --- State for Profile Page ---
     const [isEditing, setIsEditing] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [profileData, setProfileData] = useState(null);
     const [newImageFile, setNewImageFile] = useState(null);
 
-    // --- Hooks for Header Data (Unchanged) ---
+    // Header profile
     useEffect(() => {
         async function fetchProfile() {
             if (!user?.id) return;
             try {
-                const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-                if (res.ok) setHeaderProfile(await res.json());
-                else setHeaderProfile({ id: user.id, username: user.username || "Unknown", full_name: user.full_name || "User", role: user.role || "user" });
-            } catch { setHeaderProfile(null); }
+                const response = await apiClient.get(`/profiles/${user.id}`);
+                setHeaderProfile(response.data);
+            } catch {
+                setHeaderProfile({
+                    id: user.id,
+                    username: user.username || "Unknown",
+                    full_name: user.full_name || "User",
+                    role: user.role || "user"
+                });
+            }
         }
         fetchProfile();
     }, [user]);
 
+    // Notifications (apiClient)
     useEffect(() => {
         async function fetchUnreadNotifications() {
             if (!token) { setUnreadCount?.(0); return; }
             try {
-                const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res.ok) {
-                    const data = await res.json();
-                    const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                    setLocalUnreadCount(count);
-                    setUnreadCount?.(count);
-                } else { setUnreadCount?.(0); }
-            } catch { setUnreadCount?.(0); }
+                const response = await apiClient.get('/notifications');
+                const count = Array.isArray(response.data) ? response.data.filter((n) => !n.is_read).length : 0;
+                setLocalUnreadCount(count);
+                setUnreadCount?.(count);
+            } catch {
+                setUnreadCount?.(0);
+            }
         }
         fetchUnreadNotifications();
         const id = setInterval(fetchUnreadNotifications, 60000);
         return () => clearInterval(id);
     }, [token, setUnreadCount]);
 
-    // --- Main Profile Logic (Unchanged) ---
+    // Profile fetch (apiClient)
     useEffect(() => {
         const loadProfile = async () => {
             setIsLoading(true);
@@ -104,12 +146,10 @@ export default function ProfileScreen({ onBackPress, staticProfileData, onStatic
                 setProfileData(staticProfileData);
             } else if (user) {
                 try {
-                    const response = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-                    if (!response.ok) throw new Error('Could not fetch profile.');
-                    const data = await response.json();
-                    setProfileData(data);
+                    const response = await apiClient.get(`/profiles/${user.id}`);
+                    setProfileData(response.data);
                 } catch (error) {
-                    alert(error.message);
+                    alert(error.response?.data?.message || 'Could not fetch profile.');
                     setProfileData(null);
                 }
             }
@@ -118,6 +158,7 @@ export default function ProfileScreen({ onBackPress, staticProfileData, onStatic
         loadProfile();
     }, [user, staticProfileData]);
 
+    // File change
     const handleFileChange = (e) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
@@ -126,6 +167,7 @@ export default function ProfileScreen({ onBackPress, staticProfileData, onStatic
         }
     };
 
+    // Save changes (apiClient)
     const handleSave = async (editedData) => {
         setIsSaving(true);
         try {
@@ -141,15 +183,10 @@ export default function ProfileScreen({ onBackPress, staticProfileData, onStatic
                 if (newImageFile) {
                     formData.append('profileImage', newImageFile);
                 }
-                const response = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`, {
-                    method: 'PUT',
-                    body: formData,
+                const response = await apiClient.put(`/profiles/${user.id}`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
                 });
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.message || 'Failed to save profile.');
-                }
-                const refreshedProfile = await response.json();
+                const refreshedProfile = response.data;
                 setProfileData({ ...editedData, ...refreshedProfile });
                 if (onProfileUpdate) onProfileUpdate(refreshedProfile);
                 alert('Profile updated successfully!');
@@ -157,12 +194,13 @@ export default function ProfileScreen({ onBackPress, staticProfileData, onStatic
                 setNewImageFile(null);
             }
         } catch (error) {
-            alert(error.message);
+            alert(error.response?.data?.message || 'Failed to save profile.');
         } finally {
             setIsSaving(false);
         }
     };
 
+    // Logout logic
     const handleLogout = () => {
         if (window.confirm("Are you sure you want to log out?")) {
             logout();
@@ -170,6 +208,7 @@ export default function ProfileScreen({ onBackPress, staticProfileData, onStatic
         }
     };
 
+    // Dashboard route
     const getDefaultDashboardRoute = () => {
         if (!user) return '/';
         if (user.role === 'admin') return '/AdminDashboard';
@@ -178,13 +217,10 @@ export default function ProfileScreen({ onBackPress, staticProfileData, onStatic
         if (user.role === 'donor') return '/DonorDashboard';
         return '/';
     };
-
+    
     const handleBackClick = () => {
-        if (onBackPress) {
-            onBackPress();
-        } else {
-            navigate(getDefaultDashboardRoute());
-        }
+        if (onBackPress) onBackPress();
+        else navigate(getDefaultDashboardRoute());
     };
 
     if (isLoading) return (
@@ -196,7 +232,7 @@ export default function ProfileScreen({ onBackPress, staticProfileData, onStatic
             <p className="mt-6 text-slate-600 text-lg">Loading profile...</p>
         </div>
     );
-
+    
     if (!profileData) return (
         <div className="min-h-screen bg-slate-100 flex justify-center items-center">
             <div className="text-center">
@@ -208,7 +244,7 @@ export default function ProfileScreen({ onBackPress, staticProfileData, onStatic
 
     return (
         <div className="min-h-screen bg-slate-100">
-            {/* --- Header (Color Reverted) --- */}
+            {/* --- Header --- */}
             <header className="border-b border-slate-200 bg-slate-100 sticky top-0 z-40">
                 <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-3">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
@@ -238,7 +274,8 @@ export default function ProfileScreen({ onBackPress, staticProfileData, onStatic
                             </div>
                             <div className="h-4 sm:h-6 w-px bg-slate-300 mx-0.5 sm:mx-1" aria-hidden="true" />
                             <div className="flex items-center gap-2 sm:gap-3">
-                                <img src={getProfileImageUrl() || "/placeholder.svg"} alt="Profile" className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-300 object-cover" onError={(e) => { e.currentTarget.src = "/assets/profile.png" }} />
+                                {/* ONLY ProfileAvatar usage in entire file - for header only */}
+                                <ProfileAvatar className="w-7 h-7 sm:w-9 sm:h-9" />
                                 <div className="hidden sm:flex flex-col">
                                     <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">{headerProfile?.full_name || headerProfile?.username || "User"}</span>
                                     <span className="text-xs text-slate-600 capitalize">{headerProfile?.role || ""}</span>
@@ -276,14 +313,73 @@ export default function ProfileScreen({ onBackPress, staticProfileData, onStatic
     );
 }
 
-// --- REVISED Display Mode Component ---
-function DisplayProfileView({ profileData, onEdit, onBackPress }) {
-    const imageSrc = profileData.profile_image_url
-        ? (profileData.profile_image_url.startsWith('http') || profileData.profile_image_url.startsWith('blob:'))
-            ? profileData.profile_image_url
-            : `${API_BASE_URL}${profileData.profile_image_url}`
-        : '/assets/profile.png';
+// --- Enhanced Profile Image Component with No Flickering ---
+function ProfileImage({ imageUri, className = "w-28 h-28 sm:w-32 sm:h-32", alt = "Profile" }) {
+    const [imageLoaded, setImageLoaded] = useState(false);
+    const [imageError, setImageError] = useState(false);
+    const [imageSrc, setImageSrc] = useState(null);
 
+    useEffect(() => {
+        // Reset states when imageUri changes
+        setImageLoaded(false);
+        setImageError(false);
+        
+        if (imageUri) {
+            const fullUri = (imageUri.startsWith('http') || imageUri.startsWith('file') || imageUri.startsWith('blob:')) 
+                ? imageUri 
+                : `${SERVER_URL}${imageUri}`;
+            setImageSrc(fullUri);
+        } else {
+            setImageSrc('/assets/profile.png');
+        }
+    }, [imageUri]);
+
+    const handleImageLoad = () => {
+        setImageLoaded(true);
+        setImageError(false);
+    };
+
+    const handleImageError = () => {
+        setImageError(true);
+        setImageLoaded(false);
+        setImageSrc('/assets/profile.png');
+    };
+
+    return (
+        <div className={`relative ${className} rounded-full overflow-hidden`}>
+            {/* Placeholder/Loading state - always present */}
+            <div className={`absolute inset-0 bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center transition-opacity duration-500 ${imageLoaded && !imageError ? 'opacity-0' : 'opacity-100'}`}>
+                <svg 
+                    className="text-slate-400" 
+                    style={{ width: '40%', height: '40%' }}
+                    fill="currentColor" 
+                    viewBox="0 0 20 20" 
+                    xmlns="http://www.w3.org/2000/svg"
+                >
+                    <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
+                </svg>
+            </div>
+            
+            {/* Actual image - fades in smoothly */}
+            {imageSrc && (
+                <img
+                    src={imageSrc}
+                    alt={alt}
+                    className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${imageLoaded && !imageError ? 'opacity-100' : 'opacity-0'}`}
+                    onLoad={handleImageLoad}
+                    onError={handleImageError}
+                    loading="lazy"
+                />
+            )}
+            
+            {/* Active indicator */}
+        
+        </div>
+    );
+}
+
+// --- Display Mode Component ---
+function DisplayProfileView({ profileData, onEdit, onBackPress }) {
     const showAcademic = profileData.role !== 'donor';
 
     return (
@@ -304,29 +400,26 @@ function DisplayProfileView({ profileData, onEdit, onBackPress }) {
                     <div className="bg-slate-50 rounded-2xl shadow-sm p-6 text-center sticky top-24 border border-slate-200/80">
                         <div className="relative inline-block mb-4">
                             <div className="absolute -inset-1 bg-gradient-to-r from-blue-400 to-indigo-400 rounded-full blur opacity-25"></div>
-                            <img
-                                className="relative w-28 h-28 sm:w-32 sm:h-32 rounded-full border-4 border-slate-50 object-cover shadow-md"
-                                src={imageSrc}
+                            {/* Use the enhanced ProfileImage component */}
+                            <ProfileImage 
+                                imageUri={profileData.profile_image_url}
+                                className="relative w-28 h-28 sm:w-32 sm:h-32 border-4 border-slate-50 shadow-md"
                                 alt="Profile"
-                                onError={(e) => { e.currentTarget.src = '/assets/profile.png' }}
                             />
-                            <div className="absolute bottom-2 right-2 w-5 h-5 bg-emerald-500 border-2 border-slate-50 rounded-full"></div>
                         </div>
                         <h2 className="text-2xl font-bold text-slate-800">{profileData.full_name}</h2>
                         <p className="text-sm text-slate-500 mb-4 capitalize">{`@${profileData.username}`}</p>
                         <span className="inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1 rounded-full capitalize">{profileData.role}</span>
-                        
                         <div className="mt-6 text-left space-y-4">
                             <div className="flex items-center text-slate-600">
                                 <svg className="w-5 h-5 mr-3 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" /></svg>
                                 <span className="text-sm break-all">{profileData.email}</span>
                             </div>
-                             <div className="flex items-center text-slate-600">
+                            <div className="flex items-center text-slate-600">
                                 <svg className="w-5 h-5 mr-3 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
                                 <span className="text-sm">{profileData.phone || 'Not provided'}</span>
                             </div>
                         </div>
-                        
                         <button onClick={onEdit} className="mt-8 w-full flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 transition-colors duration-200 font-semibold text-sm shadow hover:shadow-md">
                             <MdEdit />
                             <span>Edit Profile</span>
@@ -337,12 +430,10 @@ function DisplayProfileView({ profileData, onEdit, onBackPress }) {
                 <div className="lg:col-span-2 space-y-8">
                     <InfoSection title="Personal Information">
                         <InfoRow label="User ID" value={profileData.username} />
-                        {showAcademic && (
-                            <>
-                                <InfoRow label="Date of Birth" value={profileData.dob} />
-                                <InfoRow label="Gender" value={profileData.gender} />
-                            </>
-                        )}
+                        {showAcademic && (<>
+                            <InfoRow label="Date of Birth" value={profileData.dob} />
+                            <InfoRow label="Gender" value={profileData.gender} />
+                        </>)}
                     </InfoSection>
                     <InfoSection title="Contact Information">
                         <InfoRow label="Email" value={profileData.email} />
@@ -362,14 +453,11 @@ function DisplayProfileView({ profileData, onEdit, onBackPress }) {
     );
 }
 
-// --- REVISED Edit Mode Component ---
+// --- Edit Mode Component ---
 function EditProfileView({ profileData, onSave, onCancel, isSaving, onFileChange }) {
     const [formData, setFormData] = useState({ ...profileData });
     const showAcademic = profileData.role !== 'donor';
-    const imageSrc = formData.profile_image_url && formData.profile_image_url.startsWith('blob:')
-        ? formData.profile_image_url
-        : (profileData.profile_image_url ? `${API_BASE_URL}${profileData.profile_image_url}` : '/assets/profile.png');
-    
+
     const handleChange = (e) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
     const handleSubmit = (e) => { e.preventDefault(); onSave(formData); };
 
@@ -380,23 +468,22 @@ function EditProfileView({ profileData, onSave, onCancel, isSaving, onFileChange
                 <div className="lg:col-span-1">
                     <div className="bg-slate-50 rounded-2xl shadow-sm p-6 text-center sticky top-24 border border-slate-200/80">
                         <div className="relative inline-block mb-4">
-                             <div className="absolute -inset-1 bg-gradient-to-r from-blue-400 to-indigo-400 rounded-full blur opacity-25"></div>
-                            <img
-                                className="relative w-28 h-28 sm:w-32 sm:h-32 rounded-full border-4 border-slate-50 object-cover shadow-md"
-                                src={imageSrc}
+                            <div className="absolute -inset-1 bg-gradient-to-r from-blue-400 to-indigo-400 rounded-full blur opacity-25"></div>
+                            {/* Use the enhanced ProfileImage component */}
+                            <ProfileImage 
+                                imageUri={formData.profile_image_url}
+                                className="relative w-28 h-28 sm:w-32 sm:h-32 border-4 border-slate-50 shadow-md"
                                 alt="Profile Preview"
-                                onError={(e) => { e.currentTarget.src = '/assets/profile.png' }}
                             />
                         </div>
                         <label className="mt-4 w-full cursor-pointer inline-flex items-center justify-center gap-2 bg-white text-slate-700 px-4 py-2.5 rounded-lg hover:bg-slate-200 transition-colors duration-200 font-semibold text-sm border border-slate-300">
-                           <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                             <span>Change Photo</span>
                             <input type="file" accept="image/*" onChange={onFileChange} className="hidden" />
                         </label>
                         <p className="text-xs text-slate-500 mt-2">JPG, PNG or GIF (max 5MB)</p>
                     </div>
                 </div>
-
                 {/* Right Column: Form Fields */}
                 <div className="lg:col-span-2 space-y-8">
                     <div className="bg-slate-50 rounded-2xl shadow-sm border border-slate-200/80">
@@ -419,8 +506,8 @@ function EditProfileView({ profileData, onSave, onCancel, isSaving, onFileChange
                     </div>
                     {showAcademic && (
                         <div className="bg-slate-50 rounded-2xl shadow-sm border border-slate-200/80">
-                             <div className="p-6 border-b border-slate-200"><h3 className="text-xl font-semibold text-slate-800">Academic Details</h3></div>
-                             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="p-6 border-b border-slate-200"><h3 className="text-xl font-semibold text-slate-800">Academic Details</h3></div>
+                            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <InputField label="Class / Group" name="class_group" value={formData.class_group || ''} onChange={handleChange} />
                                 <InputField label="Roll No." name="roll_no" value={formData.roll_no || ''} onChange={handleChange} />
                                 <InputField label="Admission Date" name="admission_date" type="date" value={formData.admission_date ? new Date(formData.admission_date).toISOString().split('T')[0] : ''} onChange={handleChange} />
@@ -430,7 +517,7 @@ function EditProfileView({ profileData, onSave, onCancel, isSaving, onFileChange
                     <div className="flex justify-end items-center gap-4 pt-4">
                         <button type="button" onClick={onCancel} disabled={isSaving} className="px-5 py-2.5 text-sm font-medium text-slate-700 bg-white rounded-lg border border-slate-300 hover:bg-slate-100 disabled:opacity-50">Cancel</button>
                         <button type="submit" disabled={isSaving} className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed shadow hover:shadow-md">
-                           {isSaving ? 'Saving...' : 'Save Changes'}
+                            {isSaving ? 'Saving...' : 'Save Changes'}
                         </button>
                     </div>
                 </div>
@@ -439,8 +526,7 @@ function EditProfileView({ profileData, onSave, onCancel, isSaving, onFileChange
     );
 }
 
-// --- REVISED Helper Components ---
-
+// --- Helper Components ---
 function InfoSection({ title, children }) {
     return (
         <div className="bg-slate-50 rounded-2xl shadow-sm border border-slate-200/80">
@@ -472,7 +558,6 @@ function InputField({ label, name, value, onChange, type = 'text', multiline = f
         placeholder: placeholder || label,
         className: "block w-full text-sm rounded-lg border-slate-300 bg-white shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500/20 transition-colors duration-200"
     };
-
     return (
         <div>
             <label htmlFor={name} className="block text-sm font-medium text-slate-700 mb-1.5">{label}</label>

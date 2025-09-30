@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.tsx';
-import { API_BASE_URL } from '../../apiConfig';
+// ★★★ 1. IMPORT apiClient AND REMOVE API_BASE_URL ★★★
+import apiClient from '../../api/client';
 import { MdArrowBack, MdInfoOutline, MdCheckCircle, MdCancel, MdHourglassEmpty, MdAssignmentTurnedIn } from 'react-icons/md';
 import { FaCalendarAlt, FaMapMarkerAlt, FaTicketAlt, FaInfoCircle, FaCheckCircle, FaChevronRight } from 'react-icons/fa';
 
@@ -73,17 +74,12 @@ const StudentEventsScreen = () => {
             return;
         }
         try {
-            const res = await fetch(`${API_BASE_URL}/api/notifications`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            if (res.ok) {
-                const data = await res.json();
-                const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                setLocalUnreadCount(count);
-                setUnreadCount?.(count);
-            } else {
-                setUnreadCount?.(0);
-            }
+            // ★★★ 2. USE apiClient FOR NOTIFICATIONS ★★★
+            const response = await apiClient.get('/notifications');
+            const data = response.data;
+            const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+            setLocalUnreadCount(count);
+            setUnreadCount?.(count);
         } catch {
             setUnreadCount?.(0);
         }
@@ -97,19 +93,16 @@ const StudentEventsScreen = () => {
       async function fetchProfile() {
           if (!user?.id) return;
           try {
-              const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-              if (res.ok) {
-                  setProfile(await res.json());
-              } else {
-                  setProfile({
-                      id: user.id,
-                      username: user.username || "Unknown",
-                      full_name: user.full_name || "User",
-                      role: user.role || "user",
-                  });
-              }
+              // ★★★ 3. USE apiClient FOR PROFILE ★★★
+              const response = await apiClient.get(`/profiles/${user.id}`);
+              setProfile(response.data);
           } catch {
-              setProfile(null);
+              setProfile({
+                  id: user.id,
+                  username: user.username || "Unknown",
+                  full_name: user.full_name || "User",
+                  role: user.role || "user",
+              });
           }
       }
       fetchProfile();
@@ -275,16 +268,15 @@ const EventListView = ({ onViewDetails, query }) => {
     if (!user) return;
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/events/all-for-student/${user.id}`);
-      if (response.ok) {
-        const data = await response.json();
-        data.sort((a, b) => new Date(a.event_datetime) - new Date(b.event_datetime));
-        setEvents(data);
-      } else {
-        alert("Error: Could not load school events.");
-      }
+      // ★★★ 4. USE apiClient FOR EVENTS - MATCHES MOBILE VERSION ★★★
+      const response = await apiClient.get(`/events/all-for-student/${user.id}`);
+      const data = response.data;
+      data.sort((a, b) => new Date(a.event_datetime) - new Date(b.event_datetime));
+      setEvents(data);
     } catch (error) {
       console.error("Error fetching events:", error);
+      // ★★★ 5. MATCH MOBILE ERROR HANDLING ★★★
+      alert("Error: Could not load school events.");
     } finally {
       setLoading(false);
     }
@@ -375,7 +367,6 @@ const EventFeedItem = ({ event, onViewDetails }) => {
     );
 };
 
-
 const EventDetailsView = ({ eventId, onBack }) => {
   const [details, setDetails] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -385,14 +376,13 @@ const EventDetailsView = ({ eventId, onBack }) => {
     if (!user || !eventId) return;
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/events/details/${eventId}/${user.id}`);
-      if (response.ok) {
-        setDetails(await response.json());
-      } else {
-        alert("Error: Could not load event details.");
-      }
+      // ★★★ 6. USE apiClient FOR EVENT DETAILS - MATCHES MOBILE VERSION ★★★
+      const response = await apiClient.get(`/events/details/${eventId}/${user.id}`);
+      setDetails(response.data);
     } catch (error) {
       console.error("Error fetching event details:", error);
+      // ★★★ 7. MATCH MOBILE ERROR HANDLING ★★★
+      alert("Error: Could not load event details.");
     } finally {
       setLoading(false);
     }
@@ -404,18 +394,16 @@ const EventDetailsView = ({ eventId, onBack }) => {
   
   const handleRsvp = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/events/rsvp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, eventId: eventId }),
+      // ★★★ 8. USE apiClient FOR RSVP - MATCHES MOBILE VERSION ★★★
+      const response = await apiClient.post('/events/rsvp', { 
+        userId: user.id, 
+        eventId: eventId 
       });
-      const data = await response.json();
-      alert(`${response.ok ? "Success" : "Info"}: ${data.message}`);
-      if (response.ok) {
-        fetchDetails(); 
-      }
+      alert(`Success: ${response.data.message}`);
+      fetchDetails(); 
     } catch (error) {
-      alert("Error: An RSVP error occurred.");
+      // ★★★ 9. MATCH MOBILE ERROR HANDLING PATTERN ★★★
+      alert(`Error: ${error.response?.data?.message || "An RSVP error occurred."}`);
     }
   };
   

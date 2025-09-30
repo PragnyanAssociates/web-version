@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.tsx';
-import { API_BASE_URL } from '../../apiConfig';
+// ★★★ 1. IMPORT apiClient AND SERVER_URL, REMOVE API_BASE_URL ★★★
+import apiClient from '../../api/client';
+import { SERVER_URL } from '../../apiConfig';
 import { 
   MdAdd, 
   MdArrowBack, 
@@ -100,19 +102,20 @@ const StudentMaterialsScreen = () => {
     // --- NEW State for Drill-Down UI ---
     const [selectedSubject, setSelectedSubject] = useState(null);
 
-    // --- Hooks for Header and Data Fetching (UNCHANGED) ---
+    // --- Hooks for Header and Data Fetching ---
     useEffect(() => {
          async function fetchUnreadNotifications() {
             if (!token) { setUnreadCount?.(0); return; }
             try {
-                const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res.ok) {
-                    const data = await res.json();
-                    const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                    setLocalUnreadCount(count);
-                    setUnreadCount?.(count);
-                } else { setUnreadCount?.(0); }
-            } catch { setUnreadCount?.(0); }
+                // ★★★ 2. USE apiClient FOR NOTIFICATIONS ★★★
+                const response = await apiClient.get('/notifications');
+                const data = response.data;
+                const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+                setLocalUnreadCount(count);
+                setUnreadCount?.(count);
+            } catch { 
+                setUnreadCount?.(0); 
+            }
         }
         fetchUnreadNotifications();
         const id = setInterval(fetchUnreadNotifications, 60000);
@@ -124,11 +127,19 @@ const StudentMaterialsScreen = () => {
             if (!user?.id) { setLoadingProfile(false); return; }
             setLoadingProfile(true);
             try {
-                const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-                if (res.ok) { setProfile(await res.json()); }
-                else { setProfile({ id: user.id, username: user.username || "Unknown", full_name: user.full_name || "User", role: user.role || "user" }); }
-            } catch { setProfile(null); }
-            finally { setLoadingProfile(false); }
+                // ★★★ 3. USE apiClient FOR PROFILE ★★★
+                const response = await apiClient.get(`/profiles/${user.id}`);
+                setProfile(response.data);
+            } catch { 
+                setProfile({ 
+                    id: user.id, 
+                    username: user.username || "Unknown", 
+                    full_name: user.full_name || "User", 
+                    role: user.role || "user" 
+                }); 
+            } finally { 
+                setLoadingProfile(false); 
+            }
         }
         fetchProfile();
     }, [user]);
@@ -137,13 +148,17 @@ const StudentMaterialsScreen = () => {
          if (!user?.class_group) return;
         setIsLoading(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/study-materials/student/${user.class_group}`);
-            if (!res.ok) throw new Error("Failed to fetch study materials.");
-            const data = await res.json();
+            // ★★★ 4. USE apiClient FOR MATERIALS - MATCHES MOBILE VERSION ★★★
+            const response = await apiClient.get(`/study-materials/student/${user.class_group}`);
+            const data = response.data;
             data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
             setMaterials(data);
-        } catch (err) { alert(err.message); }
-        finally { setIsLoading(false); }
+        } catch (error) { 
+            // ★★★ 5. MATCH MOBILE ERROR HANDLING ★★★
+            alert(error.response?.data?.message || "Failed to fetch study materials.");
+        } finally { 
+            setIsLoading(false); 
+        }
     }, [user?.class_group]);
 
     useEffect(() => { fetchMaterials(); }, [fetchMaterials]);
@@ -221,7 +236,8 @@ const StudentMaterialsScreen = () => {
                         {new Date(item.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "long" })}
                     </p>
                     <div className="flex items-center space-x-3">
-                        {item.file_path && <a href={`${API_BASE_URL}${item.file_path}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 font-semibold text-blue-600 hover:text-blue-800 transition-colors text-sm"><MdDownload size={16} /><span>Download</span></a>}
+                        {/* ★★★ 6. USE SERVER_URL FOR FILE DOWNLOADS - MATCHES MOBILE VERSION ★★★ */}
+                        {item.file_path && <a href={`${SERVER_URL}${item.file_path}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 font-semibold text-blue-600 hover:text-blue-800 transition-colors text-sm"><MdDownload size={16} /><span>Download</span></a>}
                         {item.external_link && <a href={item.external_link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 font-semibold text-slate-600 hover:text-slate-900 transition-colors text-sm"><MdLaunch size={16} /><span>Open</span></a>}
                     </div>
                 </div>

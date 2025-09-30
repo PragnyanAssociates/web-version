@@ -8,7 +8,7 @@ const AdDisplay = () => {
   useEffect(() => {
     const fetchAndCycleAd = async () => {
       try {
-        const { data: approvedAds } = await apiClient.get('/api/ads/display');
+        const { data: approvedAds } = await apiClient.get('/ads/display');
         
         if (approvedAds.length === 0) return;
 

@@ -2,11 +2,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext.tsx';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from '../../apiConfig';
 import { MdArrowBack } from 'react-icons/md';
+import apiClient from '../../api/client.js'; // ★★★ Only import needed
 
-
-// --- Icon Components for Header (Unchanged) ---
+// --- Icon Components for Header (Keep existing) ---
 function UserIcon() {
     return (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
@@ -45,8 +44,7 @@ function BellIcon() {
     );
 }
 
-
-// --- Redesigned General Icon Components ---
+// --- Icon Components (Keep existing) ---
 const IconAddCircle = ({ className = '', size = 20 }) => (
     <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <circle cx="12" cy="12" r="10" />
@@ -68,53 +66,59 @@ const IconCloseCircle = ({ className = '', size = 20 }) => (
     </svg>
 );
 
-
-// --- Main component controlling views ---
+// --- Main Component (Fixed) ---
 export default function AdminSportsScreen() {
     const { user, token, logout, getProfileImageUrl, setUnreadCount } = useAuth();
     const navigate = useNavigate();
     
-    // State for Header
     const [profile, setProfile] = useState(null);
     const [unreadCount, setLocalUnreadCount] = useState(0);
     const [headerQuery, setHeaderQuery] = useState("");
-    // State for Sports Page
     const [view, setView] = useState('list');
     const [selectedActivity, setSelectedActivity] = useState(null);
 
-
-    // Hooks for Header
+    // ★★★ FIXED: Use apiClient like mobile version ★★★
     useEffect(() => {
         async function fetchProfile() {
             if (!user?.id) return;
             try {
-                const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-                if (res.ok) setProfile(await res.json());
-                else setProfile({ id: user.id, username: user.username || "Unknown", full_name: user.full_name || "User", role: user.role || "user" });
-            } catch { setProfile(null); }
+                const res = await apiClient.get(`/profiles/${user.id}`);
+                setProfile(res.data);
+            } catch (error) {
+                console.error('Error fetching profile:', error);
+                setProfile({ 
+                    id: user.id, 
+                    username: user.username || "Unknown", 
+                    full_name: user.full_name || "User", 
+                    role: user.role || "user" 
+                });
+            }
         }
         fetchProfile();
     }, [user]);
 
-
     useEffect(() => {
         async function fetchUnreadNotifications() {
-            if (!token) { setUnreadCount?.(0); return; }
+            if (!token) { 
+                setUnreadCount?.(0); 
+                return; 
+            }
             try {
-                const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res.ok) {
-                    const data = await res.json();
-                    const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                    setLocalUnreadCount(count);
-                    setUnreadCount?.(count);
-                } else { setUnreadCount?.(0); }
-            } catch { setUnreadCount?.(0); }
+                const res = await apiClient.get('/notifications', { 
+                    headers: { Authorization: `Bearer ${token}` } 
+                });
+                const count = Array.isArray(res.data) ? res.data.filter((n) => !n.is_read).length : 0;
+                setLocalUnreadCount(count);
+                setUnreadCount?.(count);
+            } catch (error) {
+                console.error('Error fetching notifications:', error);
+                setUnreadCount?.(0);
+            }
         }
         fetchUnreadNotifications();
         const id = setInterval(fetchUnreadNotifications, 60000);
         return () => clearInterval(id);
     }, [token, setUnreadCount]);
-
 
     const handleLogout = () => {
         if (window.confirm("Are you sure you want to log out?")) {
@@ -122,7 +126,6 @@ export default function AdminSportsScreen() {
             navigate("/");
         }
     };
-
 
     const getDefaultDashboardRoute = () => {
         if (!user) return '/';
@@ -133,15 +136,16 @@ export default function AdminSportsScreen() {
         return '/';
     };
     
-    // Page Logic
     const handleBack = () => {
         setView('list');
         setSelectedActivity(null);
     };
+    
     const handleSelectActivity = (activity) => {
         setSelectedActivity(activity);
         setView('details');
     };
+    
     const renderContent = () => {
         switch (view) {
             case 'list':
@@ -153,8 +157,7 @@ export default function AdminSportsScreen() {
             default:
                 return null;
         }
-    }
-
+    };
 
     return (
         <div className="min-h-screen bg-slate-50">
@@ -167,7 +170,14 @@ export default function AdminSportsScreen() {
                         </div>
                         <div className="flex items-center flex-wrap justify-end gap-2 sm:gap-3">
                             <div className="relative">
-                                <input id="module-search" type="text" value={headerQuery} onChange={(e) => setHeaderQuery(e.target.value)} placeholder="Search activities..." className="w-full sm:w-44 lg:w-64 rounded-md border border-slate-200 bg-white px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                                <input 
+                                    id="module-search" 
+                                    type="text" 
+                                    value={headerQuery} 
+                                    onChange={(e) => setHeaderQuery(e.target.value)} 
+                                    placeholder="Search activities..." 
+                                    className="w-full sm:w-44 lg:w-64 rounded-md border border-slate-200 bg-white px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                />
                             </div>
                             <div className="inline-flex items-stretch rounded-lg border border-slate-200 bg-white overflow-hidden">
                                 <button onClick={() => navigate(getDefaultDashboardRoute())} className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition" type="button" title="Home">
@@ -187,7 +197,12 @@ export default function AdminSportsScreen() {
                             </div>
                             <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
                             <div className="flex items-center gap-2 sm:gap-3">
-                                <img src={getProfileImageUrl() || "/placeholder.svg"} alt="Profile" className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover" onError={(e) => { e.currentTarget.src = "/assets/profile.png" }} />
+                                <img 
+                                    src={getProfileImageUrl() || "/placeholder.svg"} 
+                                    alt="Profile" 
+                                    className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover" 
+                                    onError={(e) => { e.currentTarget.src = "/assets/profile.png" }} 
+                                />
                                 <div className="hidden sm:flex flex-col">
                                     <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">{profile?.full_name || profile?.username || "User"}</span>
                                     <span className="text-xs text-slate-600 capitalize">{profile?.role || ""}</span>
@@ -210,16 +225,14 @@ export default function AdminSportsScreen() {
             </main>
         </div>
     );
-};
+}
 
-
-// --- Activity List View (Updated with Blue Button) ---
+// ★★★ FIXED: Activity List View - Use apiClient like mobile ★★★
 const ActivityListView = ({ onSelect, onCreate }) => {
     const [activities, setActivities] = useState([]);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
     const { user } = useAuth();
-
 
     const getDefaultDashboardRoute = () => {
         if (!user) return '/';
@@ -229,24 +242,23 @@ const ActivityListView = ({ onSelect, onCreate }) => {
         return '/';
     };
 
-
-    const fetchData = useCallback(() => {
+    // ★★★ FIXED: Match mobile version exactly ★★★
+    const fetchData = useCallback(async () => {
         setLoading(true);
-        fetch(`${API_BASE_URL}/api/sports/all`)
-            .then((res) => {
-                if (!res.ok) throw new Error('Could not load activities');
-                return res.json();
-            })
-            .then((data) => setActivities(data))
-            .catch(() => window.alert('Error: Could not load activities.'))
-            .finally(() => setLoading(false));
+        try {
+            const response = await apiClient.get('/sports/all');
+            setActivities(response.data);
+        } catch (error) {
+            console.error("Error fetching activities:", error);
+            alert("Error: Could not load activities.");
+        } finally {
+            setLoading(false);
+        }
     }, []);
-
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
-
 
     return (
         <div className="max-w-5xl mx-auto">
@@ -258,12 +270,11 @@ const ActivityListView = ({ onSelect, onCreate }) => {
             </div>
             
             <div className="flex justify-end mb-6">
-                <button onClick={onCreate} className="inline-flex items-center bg-blue-600 text-white py-2 px-5 rounded-lg hover:bg-blue-700 transition-colors duration-200 font-semibold text-sm shadow-sm" type="button" aria-label="Create new activity">
+                <button onClick={onCreate} className="inline-flex items-center bg-blue-600 text-white py-2 px-5 rounded-lg hover:bg-blue-700 transition-colors duration-200 font-semibold text-sm shadow-sm" type="button">
                     <IconAddCircle className="mr-2" size={18} />
                     Create New Activity
                 </button>
             </div>
-
 
             {loading ? (
                 <Loader />
@@ -304,7 +315,7 @@ const ActivityListView = ({ onSelect, onCreate }) => {
                                             </div>
                                         </div>
                                         <div className="flex-shrink-0">
-                                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${item.application_count > 0 ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-700'}`} aria-live="polite">
+                                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${item.application_count > 0 ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-700'}`}>
                                                 {item.application_count} Pending
                                             </span>
                                         </div>
@@ -319,37 +330,36 @@ const ActivityListView = ({ onSelect, onCreate }) => {
     );
 };
 
-
-// --- Activity Details View (Updated with Blue Accents) ---
+// ★★★ FIXED: Activity Details - Use apiClient like mobile ★★★
 const ActivityDetails = ({ activity, onBack }) => {
     const [allApplications, setAllApplications] = useState([]);
     const [loading, setLoading] = useState(true);
     const [activeFilter, setActiveFilter] = useState('All');
 
-
-    const fetchApplications = useCallback(() => {
+    // ★★★ FIXED: Match mobile version exactly ★★★
+    const fetchApplications = useCallback(async () => {
         setLoading(true);
-        fetch(`${API_BASE_URL}/api/sports/applications/${activity.id}`)
-            .then((res) => {
-                if (!res.ok) throw new Error('Could not load application history');
-                return res.json();
-            })
-            .then(setAllApplications)
-            .catch(() => window.alert('Error: Could not load application history.'))
-            .finally(() => setLoading(false));
+        try {
+            const response = await apiClient.get(`/sports/applications/${activity.id}`);
+            setAllApplications(response.data);
+        } catch (error) {
+            console.error("Error fetching applications:", error);
+            alert("Error: Could not load application history.");
+        } finally {
+            setLoading(false);
+        }
     }, [activity.id]);
-
 
     useEffect(() => {
         fetchApplications();
     }, [fetchApplications]);
-
 
     const filteredApplications = useMemo(() => {
         if (activeFilter === 'All') return allApplications;
         return allApplications.filter((app) => app.status === activeFilter);
     }, [activeFilter, allApplications]);
 
+    const handleRefresh = () => fetchApplications();
 
     return (
         <div className="max-w-6xl mx-auto">
@@ -364,17 +374,20 @@ const ActivityDetails = ({ activity, onBack }) => {
                 <p className="text-gray-500 text-base">Application History & Management</p>
             </div>
 
-
             <div className="flex justify-center mb-8">
                 <div className="flex bg-gray-100/80 rounded-lg p-1 space-x-1">
                     {['All', 'Applied', 'Approved', 'Rejected'].map((filter) => (
-                        <button key={filter} onClick={() => setActiveFilter(filter)} type="button" aria-pressed={activeFilter === filter} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all duration-200 ${activeFilter === filter ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 hover:bg-white/60'}`}>
+                        <button 
+                            key={filter} 
+                            onClick={() => setActiveFilter(filter)} 
+                            type="button" 
+                            className={`px-4 py-2 rounded-md text-sm font-semibold transition-all duration-200 ${activeFilter === filter ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 hover:bg-white/60'}`}
+                        >
                             {filter}
                         </button>
                     ))}
                 </div>
             </div>
-
 
             {loading ? (
                 <Loader />
@@ -390,7 +403,7 @@ const ActivityDetails = ({ activity, onBack }) => {
             ) : (
                 <div className="space-y-4">
                     {filteredApplications.map((item) => (
-                        <ApplicationCard key={item.registration_id} application={item} onUpdate={fetchApplications} />
+                        <ApplicationCard key={item.registration_id} application={item} onUpdate={handleRefresh} />
                     ))}
                 </div>
             )}
@@ -398,43 +411,51 @@ const ActivityDetails = ({ activity, onBack }) => {
     );
 };
 
-
-// --- Single Application Card (Updated background) ---
+// ★★★ FIXED: Application Card - Use apiClient like mobile ★★★
 const ApplicationCard = ({ application, onUpdate }) => {
     const { user } = useAuth();
 
-
+    // ★★★ FIXED: Match mobile version exactly ★★★
     const handleStatusUpdate = (regId, status) => {
         if (window.confirm(`Are you sure you want to ${status.toLowerCase()} this application?`)) {
-            fetch(`${API_BASE_URL}/api/sports/application/status`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ registrationId: regId, status, adminId: user?.id }),
-            }).then((res) => {
-                if (res.ok) { onUpdate(); } 
-                else { window.alert('Failed to update status.'); }
-            });
+            (async () => {
+                try {
+                    const response = await apiClient.put('/sports/application/status', {
+                        registrationId: regId, 
+                        status,
+                        adminId: user?.id 
+                    });
+                    onUpdate();
+                    alert(`Application ${status.toLowerCase()} successfully!`);
+                } catch (error) {
+                    console.error('Error updating status:', error);
+                    alert('Error: Failed to update status.');
+                }
+            })();
         }
     };
 
-
-    const handleSaveRemarks = (regId, text) => {
-        fetch(`${API_BASE_URL}/api/sports/application/remarks`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ registrationId: regId, remarks: text }),
-        });
+    const handleSaveRemarks = async (regId, text) => {
+        try {
+            await apiClient.put('/sports/application/remarks', { 
+                registrationId: regId, 
+                remarks: text 
+            });
+        } catch (error) { 
+            console.error("Could not save remarks:", error); 
+        }
     };
 
-
-    const handleSaveAchievements = (regId, text) => {
-        fetch(`${API_BASE_URL}/api/sports/application/achievements`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ registrationId: regId, achievements: text }),
-        });
+    const handleSaveAchievements = async (regId, text) => {
+        try {
+            await apiClient.put('/sports/application/achievements', { 
+                registrationId: regId, 
+                achievements: text 
+            });
+        } catch (error) { 
+            console.error("Could not save achievements:", error); 
+        }
     };
-
 
     return (
         <div className="bg-slate-50 rounded-xl shadow-sm border border-slate-200/80 p-6">
@@ -453,14 +474,12 @@ const ApplicationCard = ({ application, onUpdate }) => {
                 <StatusBadge status={application.status} />
             </div>
 
-
             {application.status === 'Applied' && (
                 <div className="flex flex-col sm:flex-row gap-3 mb-6 pt-2">
                     <button
                         onClick={() => handleStatusUpdate(application.registration_id, 'Approved')}
-                        className="w-fit inline-flex items-center justify-center bg-green-600 hover:bg-green-700 text-white px-2 py-2.5 rounded-lg font-semibold shadow-sm transition-colors text-sm"
+                        className="w-fit inline-flex items-center justify-center bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg font-semibold shadow-sm transition-colors text-sm"
                         type="button"
-                        aria-label={`Approve application for ${application.full_name}`}
                     >
                         <IconCheckCircle className="mr-2" size={18} /> Approve
                     </button>
@@ -468,23 +487,31 @@ const ApplicationCard = ({ application, onUpdate }) => {
                         onClick={() => handleStatusUpdate(application.registration_id, 'Rejected')}
                         className="w-fit inline-flex items-center justify-center bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-lg font-semibold shadow-sm transition-colors text-sm"
                         type="button"
-                        aria-label={`Reject application for ${application.full_name}`}
                     >
                         <IconCloseCircle className="mr-2" size={18} /> Reject
                     </button>
                 </div>
             )}
 
-
             <div className="space-y-4">
                 <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5" htmlFor={`remarks-${application.registration_id}`}>Remarks / Notes</label>
-                    <textarea id={`remarks-${application.registration_id}`} placeholder="Add internal notes about this application..." defaultValue={application.remarks} onBlur={(e) => handleSaveRemarks(application.registration_id, e.target.value)} className="w-full min-h-[80px] p-3 text-sm border border-gray-300 rounded-lg resize-y focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition-all duration-150 bg-gray-50/50" />
+                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Remarks / Notes</label>
+                    <textarea 
+                        placeholder="Add internal notes about this application..." 
+                        defaultValue={application.remarks} 
+                        onBlur={(e) => handleSaveRemarks(application.registration_id, e.target.value)} 
+                        className="w-full min-h-[80px] p-3 text-sm border border-gray-300 rounded-lg resize-y focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition-all duration-150 bg-gray-50/50" 
+                    />
                 </div>
                 {application.status === 'Approved' && (
                     <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-1.5" htmlFor={`achievements-${application.registration_id}`}>Achievements</label>
-                        <textarea id={`achievements-${application.registration_id}`} placeholder="List achievements, one per line..." defaultValue={application.achievements} onBlur={(e) => handleSaveAchievements(application.registration_id, e.target.value)} className="w-full min-h-[80px] p-3 text-sm border border-gray-300 rounded-lg resize-y focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition-all duration-150 bg-gray-50/50" />
+                        <label className="block text-sm font-semibold text-gray-700 mb-1.5">Achievements</label>
+                        <textarea 
+                            placeholder="List achievements, one per line..." 
+                            defaultValue={application.achievements} 
+                            onBlur={(e) => handleSaveAchievements(application.registration_id, e.target.value)} 
+                            className="w-full min-h-[80px] p-3 text-sm border border-gray-300 rounded-lg resize-y focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition-all duration-150 bg-gray-50/50" 
+                        />
                     </div>
                 )}
             </div>
@@ -492,8 +519,7 @@ const ApplicationCard = ({ application, onUpdate }) => {
     );
 };
 
-
-// --- Status Badge (Unchanged) ---
+// --- Status Badge (Keep existing) ---
 const StatusBadge = ({ status }) => {
     const getStatusStyle = () => {
         switch (status) {
@@ -510,34 +536,34 @@ const StatusBadge = ({ status }) => {
     );
 };
 
-
-// --- Create Activity Form (Updated with Blue Button) ---
+// ★★★ FIXED: Create Activity Form - Use apiClient like mobile ★★★
 const CreateActivityForm = ({ onBack, editorId }) => {
     const [name, setName] = useState('');
     const [team, setTeam] = useState('');
     const [coach, setCoach] = useState('');
     const [schedule, setSchedule] = useState('');
 
-
-    const handleSubmit = () => {
+    // ★★★ FIXED: Match mobile version exactly ★★★
+    const handleSubmit = async () => {
         if (!name.trim() || !coach.trim()) {
-            return window.alert('Validation Error: Activity Name and Coach Name are required.');
+            return alert('Validation Error: Activity Name and Coach Name are required.');
         }
-        const payload = { name, team_name: team, coach_name: coach, schedule_details: schedule, created_by: editorId };
-        fetch(`${API_BASE_URL}/api/sports`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        }).then(res => {
-            if (res.ok) {
-                window.alert('Success: Activity created!');
-                onBack();
-            } else {
-                window.alert('Error: Could not create activity.');
-            }
-        });
+        const payload = { 
+            name, 
+            team_name: team, 
+            coach_name: coach, 
+            schedule_details: schedule, 
+            created_by: editorId 
+        };
+        try {
+            const response = await apiClient.post('/sports', payload);
+            alert('Success: Activity created!');
+            onBack();
+        } catch (error) {
+            console.error("Error creating activity:", error);
+            alert('Error: Could not create activity.');
+        }
     };
-
 
     return (
         <div className="max-w-3xl mx-auto">
@@ -555,19 +581,43 @@ const CreateActivityForm = ({ onBack, editorId }) => {
                 <div className="space-y-5">
                     <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-1.5">Activity Name <span className="text-red-500">*</span></label>
-                        <input type="text" placeholder="e.g., Basketball, Football, Cricket" className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition duration-150" value={name} onChange={(e) => setName(e.target.value)} />
+                        <input 
+                            type="text" 
+                            placeholder="e.g., Basketball, Football, Cricket" 
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition duration-150" 
+                            value={name} 
+                            onChange={(e) => setName(e.target.value)} 
+                        />
                     </div>
                     <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-1.5">Team Name</label>
-                        <input type="text" placeholder="e.g., Junior Team, Senior Squad" className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition duration-150" value={team} onChange={(e) => setTeam(e.target.value)} />
+                        <input 
+                            type="text" 
+                            placeholder="e.g., Junior Team, Senior Squad" 
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition duration-150" 
+                            value={team} 
+                            onChange={(e) => setTeam(e.target.value)} 
+                        />
                     </div>
                     <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-1.5">Coach Name <span className="text-red-500">*</span></label>
-                        <input type="text" placeholder="e.g., Mr. Jordan, Coach Smith" className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition duration-150" value={coach} onChange={(e) => setCoach(e.target.value)} />
+                        <input 
+                            type="text" 
+                            placeholder="e.g., Mr. Jordan, Coach Smith" 
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition duration-150" 
+                            value={coach} 
+                            onChange={(e) => setCoach(e.target.value)} 
+                        />
                     </div>
                     <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-1.5">Schedule Details</label>
-                        <input type="text" placeholder="e.g., Mon, Wed, Fri: 4-5 PM" className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition duration-150" value={schedule} onChange={(e) => setSchedule(e.target.value)} />
+                        <input 
+                            type="text" 
+                            placeholder="e.g., Mon, Wed, Fri: 4-5 PM" 
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 transition duration-150" 
+                            value={schedule} 
+                            onChange={(e) => setSchedule(e.target.value)} 
+                        />
                     </div>
                     <button onClick={handleSubmit} className="w-fit bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 transition-colors duration-200 shadow-sm text-base" type="button">
                         Save Activity
@@ -578,8 +628,7 @@ const CreateActivityForm = ({ onBack, editorId }) => {
     );
 };
 
-
-// --- Loader Spinner (Unchanged) ---
+// --- Loader (Keep existing) ---
 const Loader = () => (
     <div className="flex justify-center items-center py-20">
         <div className="w-12 h-12 border-4 border-gray-200 border-t-slate-600 rounded-full animate-spin"></div>

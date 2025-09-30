@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext.tsx';
-import { API_BASE_URL } from '../apiConfig';
+// ✅ FIXED: Updated imports
+import apiClient from '../api/client';
+import { SERVER_URL } from '../apiConfig';
 import { useNavigate } from 'react-router-dom';
 import { MdSchedule, MdArrowBack } from 'react-icons/md';
+
 
 // --- Icon Components for Header ---
 function UserIcon() {
@@ -14,6 +17,7 @@ function UserIcon() {
     );
 }
 
+
 function HomeIcon() {
     return (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
@@ -22,6 +26,7 @@ function HomeIcon() {
         </svg>
     );
 }
+
 
 function CalendarIcon() {
     return (
@@ -33,6 +38,7 @@ function CalendarIcon() {
         </svg>
     );
 }
+
 
 function BellIcon() {
     return (
@@ -47,6 +53,7 @@ function BellIcon() {
 }
 
 
+
 // Constants
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const CLASS_GROUPS = ['LKG', 'UKG', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8', 'Class 9', 'Class 10'];
@@ -57,6 +64,7 @@ const PERIOD_DEFINITIONS = [
     { period: 7, time: '01:00-01:45' }, { period: 8, time: '01:45-02:30' },
 ];
 
+
 const dayHeaders = [
     { name: 'MON', bgColor: 'bg-yellow-100', textColor: 'text-yellow-800' },
     { name: 'TUE', bgColor: 'bg-pink-100', textColor: 'text-pink-800' },
@@ -66,13 +74,16 @@ const dayHeaders = [
     { name: 'SAT', bgColor: 'bg-indigo-100', textColor: 'text-indigo-800' },
 ];
 
+
 const TimetableScreen = () => {
     const { user, token, logout, getProfileImageUrl, setUnreadCount, isLoading: isAuthLoading } = useAuth();
     const navigate = useNavigate();
 
+
     // --- State for Header ---
     const [profile, setProfile] = useState(null);
     const [unreadCount, setLocalUnreadCount] = useState(0);
+
 
     // --- Component State ---
     const [isTimetableLoading, setIsTimetableLoading] = useState(true);
@@ -82,22 +93,29 @@ const TimetableScreen = () => {
     const [selectedSlot, setSelectedSlot] = useState(null);
     const [selectedClass, setSelectedClass] = useState('');
 
-    // --- Hooks for Header (Unchanged) ---
+
+    // ✅ FIXED: Updated fetchProfile function
     useEffect(() => {
         if (user?.id) {
-            fetch(`${API_BASE_URL}/api/profiles/${user.id}`)
-                .then(res => res.ok ? res.json() : null)
-                .then(data => setProfile(data || { id: user.id, username: user.username, full_name: user.full_name, role: user.role }))
-                .catch(() => setProfile(null));
+            apiClient.get(`/profiles/${user.id}`)
+                .then(response => setProfile(response.data))
+                .catch(() => setProfile({ 
+                    id: user.id, 
+                    username: user.username, 
+                    full_name: user.full_name, 
+                    role: user.role 
+                }));
         }
     }, [user]);
 
+
+    // ✅ FIXED: Updated fetchUnreadNotifications function
     useEffect(() => {
         const fetchNotifications = () => {
             if (token) {
-                fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } })
-                    .then(res => res.ok ? res.json() : [])
-                    .then(data => {
+                apiClient.get('/notifications')
+                    .then(response => {
+                        const data = response.data;
                         const count = Array.isArray(data) ? data.filter(n => !n.is_read).length : 0;
                         setLocalUnreadCount(count);
                         setUnreadCount?.(count);
@@ -111,6 +129,7 @@ const TimetableScreen = () => {
     }, [token, setUnreadCount]);
 
 
+
     // --- Component Logic ---
     useEffect(() => {
         if (user) {
@@ -119,39 +138,44 @@ const TimetableScreen = () => {
         }
     }, [user]);
 
+
     useEffect(() => {
         if (isAuthLoading || !user) return;
         if (user.role === 'admin') fetchTeachers();
     }, [user, isAuthLoading]);
+
 
     useEffect(() => {
         if (isAuthLoading || !selectedClass) return;
         fetchTimetable(selectedClass);
     }, [selectedClass, isAuthLoading]);
 
+
+    // ✅ FIXED: Updated fetchTimetable function
     const fetchTimetable = async (classGroup) => {
         setIsTimetableLoading(true);
         try {
-            const response = await fetch(`${API_BASE_URL}/api/timetable/${classGroup}`);
-            if (!response.ok) throw new Error(await response.text() || 'Failed to fetch timetable data.');
-            setApiTimetableData(await response.json());
+            const response = await apiClient.get(`/timetable/${classGroup}`);
+            setApiTimetableData(response.data);
         } catch (error) {
-            alert(error.message);
+            alert(error.response?.data?.message || 'Failed to fetch timetable data.');
             setApiTimetableData([]);
         } finally {
             setIsTimetableLoading(false);
         }
     };
 
+
+    // ✅ FIXED: Updated fetchTeachers function
     const fetchTeachers = async () => {
         try {
-            const response = await fetch(`${API_BASE_URL}/api/teachers`);
-            if (!response.ok) throw new Error(await response.text() || 'Failed to fetch teachers list.');
-            setTeachers(await response.json());
+            const response = await apiClient.get('/teachers');
+            setTeachers(response.data);
         } catch (error) {
-            alert(error.message);
+            alert(error.response?.data?.message || 'Failed to fetch teachers list.');
         }
     };
+
 
     const scheduleData = useMemo(() => {
         const timetableMap = new Map(apiTimetableData.map(slot => [`${slot.day_of_week}-${slot.period_number}`, slot]));
@@ -172,6 +196,7 @@ const TimetableScreen = () => {
         setIsModalVisible(true);
     };
 
+
     const handleTeacherSlotPress = (subject, periodNumber, dayOfColumn) => {
         const today = new Date();
         const currentDayOfWeek = today.toLocaleString('en-US', { weekday: 'long' });
@@ -183,25 +208,34 @@ const TimetableScreen = () => {
         navigate('/AttendanceScreen', { state: { class_group: selectedClass, subject_name: subject, period_number: periodNumber, date: today.toISOString().split('T')[0] } });
     };
 
+
+    // ✅ FIXED: Updated handleSaveChanges function
     const handleSaveChanges = async (slotToSave) => {
         if (!selectedSlot || !selectedClass) return;
-        const payload = { class_group: selectedClass, day_of_week: selectedSlot.day, period_number: selectedSlot.period, subject_name: slotToSave.subject_name || null, teacher_id: slotToSave.teacher_id || null };
+        const payload = { 
+            class_group: selectedClass, 
+            day_of_week: selectedSlot.day, 
+            period_number: selectedSlot.period, 
+            subject_name: slotToSave.subject_name || null, 
+            teacher_id: slotToSave.teacher_id || null 
+        };
         try {
-            const response = await fetch(`${API_BASE_URL}/api/timetable`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            if (!response.ok) throw new Error(await response.text() || 'Failed to update timetable.');
+            await apiClient.post('/timetable', payload);
             alert('Timetable updated!');
             setIsModalVisible(false);
             fetchTimetable(selectedClass);
         } catch (error) {
-            alert(error.message);
+            alert(error.response?.data?.message || 'Failed to update timetable.');
         }
     };
+
 
     const getDefaultDashboardRoute = () => {
         if (!user) return '/';
         const roleMap = { admin: '/AdminDashboard', student: '/StudentDashboard', teacher: '/TeacherDashboard', donor: '/DonorDashboard' };
         return roleMap[user.role] || '/';
     };
+
 
     const handleLogout = () => {
         if (window.confirm("Are you sure you want to log out?")) {
@@ -210,9 +244,11 @@ const TimetableScreen = () => {
         }
     };
 
+
     if (isAuthLoading || !user) {
         return <div className="min-h-screen bg-slate-100 flex justify-center items-center"><div className="w-16 h-16 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div></div>;
     }
+
 
     return (
         <div className="min-h-screen bg-slate-100">
@@ -273,6 +309,7 @@ const TimetableScreen = () => {
                         </div>
                     </header>
 
+
                     {isTimetableLoading ? (
                         <div className="flex justify-center items-center py-20"><div className="w-12 h-12 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div></div>
                     ) : (
@@ -300,6 +337,7 @@ const TimetableScreen = () => {
                                                     const isBreak = period.isBreak;
                                                     const canClick = user.role === 'admin' || (user.role === 'teacher' && isMyPeriod);
 
+
                                                     let cellClasses = 'p-3 text-center border-b border-r border-slate-200 transition-all duration-200 h-[70px]';
                                                     if (isBreak) {
                                                         cellClasses += ' bg-slate-200 text-slate-500 font-medium italic';
@@ -307,6 +345,7 @@ const TimetableScreen = () => {
                                                         if (canClick) cellClasses += ' cursor-pointer hover:bg-blue-50';
                                                         if (isMyPeriod) cellClasses += ' bg-indigo-50 border-l-4 border-indigo-500';
                                                     }
+
 
                                                     return (
                                                         <td key={periodIndex} className={cellClasses} onClick={() => !isBreak && (user.role === 'admin' ? handleSlotPress(day, periodNumber) : (isMyPeriod && handleTeacherSlotPress(period.subject, periodNumber, day)))}>
@@ -329,6 +368,7 @@ const TimetableScreen = () => {
                         </div>
                     )}
 
+
                     {isModalVisible && selectedSlot && (
                         <EditSlotModal isVisible={isModalVisible} onClose={() => setIsModalVisible(false)} onSave={handleSaveChanges} slotInfo={selectedSlot} teachers={teachers} currentData={apiTimetableData.find(d => d.day_of_week === selectedSlot.day && d.period_number === selectedSlot.period)} />
                     )}
@@ -338,14 +378,17 @@ const TimetableScreen = () => {
     );
 };
 
+
 const EditSlotModal = ({ isVisible, onClose, onSave, slotInfo, teachers, currentData }) => {
     const [selectedTeacherId, setSelectedTeacherId] = useState(currentData?.teacher_id);
     const [selectedSubject, setSelectedSubject] = useState(currentData?.subject_name);
+
 
     useEffect(() => {
         setSelectedTeacherId(currentData?.teacher_id);
         setSelectedSubject(currentData?.subject_name);
     }, [currentData]);
+
 
     const availableSubjects = useMemo(() => {
         if (!selectedTeacherId) return [];
@@ -353,7 +396,9 @@ const EditSlotModal = ({ isVisible, onClose, onSave, slotInfo, teachers, current
         return teacher?.subjects_taught || [];
     }, [selectedTeacherId, teachers]);
 
+
     if (!isVisible) return null;
+
 
     return (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-center z-50 p-4">
@@ -390,12 +435,9 @@ const EditSlotModal = ({ isVisible, onClose, onSave, slotInfo, teachers, current
                     </div>
                 </div>
             </div>
-             <style jsx>{`
-                @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
-                .animate-fadeIn { animation: fadeIn 0.2s ease-out forwards; }
-            `}</style>
         </div>
     );
 };
+
 
 export default TimetableScreen;

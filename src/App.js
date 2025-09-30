@@ -36,6 +36,7 @@ import FoodScreen from './components/food/FoodScreen.jsx';
 import LabCard from './components/labs/LabCard.jsx';
 import StudentLabsScreen from './components/labs/StudentLabsScreen.jsx';
 import TeacherAdminLabsScreen from './components/labs/TeacherAdminLabsScreen.jsx';
+import OnlineClassScreen from './components/Online_Class/OnlineClassScreen.jsx';
 import MeetingCard from './components/ptm/MeetingCard.jsx';
 import StudentPTMScreen from './components/ptm/StudentPTMScreen.jsx';
 import TeacherAdminPTMScreen from './components/ptm/TeacherAdminPTMScreen.jsx';
@@ -74,7 +75,8 @@ import AdminLM from './screens/AdminLM.jsx';
 import AdminHelpDeskScreen from './components/helpdesk/AdminHelpDeskScreen.jsx';
 import DonorHelpDeskScreen from './components/helpdesk/DonorHelpDeskScreen.jsx';
 import UserHelpDeskScreen from './components/helpdesk/UserHelpDeskScreen.jsx';
-
+import AlumniScreen from './components/Alumni/AlumniScreen.jsx';
+import PreAdmissionsScreen from './components/Pre-Admissions/PreAdmissionsScreen.jsx';
 // --- Dashboard Layout Wrapper ---
 function DashboardLayout() {
   return (
@@ -155,6 +157,7 @@ function AppContent() {
           <Route path="/TransportScreen" element={<TransportScreen />} />
           <Route path="/StudentHealthScreen" element={<StudentHealthScreen />} />
           <Route path="/TeacherAdminHealthScreen" element={<TeacherAdminHealthScreen />} />
+          <Route path="/OnlineClassScreen" element={<OnlineClassScreen/>}/>
           <Route path="/ExamsScreen" element={<ExamsScreen />} />
           <Route path="/StudentExamsScreen" element={<StudentExamsScreen />} />
           <Route path="/TeacherAdminExamsScreen" element={<TeacherAdminExamsScreen />} />
@@ -174,6 +177,8 @@ function AppContent() {
           <Route path="/AdminHelpDeskScreen" element={<AdminHelpDeskScreen />} />
           <Route path="/DonorHelpDeskScreen" element={<DonorHelpDeskScreen />} />
           <Route path="/UserHelpDeskScreen" element={<UserHelpDeskScreen />} />
+          <Route path="/AlumniScreen" element={<AlumniScreen/>}/>
+          <Route path="/PreAdmissionsScreen" element={<PreAdmissionsScreen/>}/>
         </Route>
       </Routes>
 

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   MdArrowBack,
@@ -11,7 +11,7 @@ import {
   MdClose,
 } from "react-icons/md";
 import { useAuth } from "../../context/AuthContext.tsx";
-import { API_BASE_URL } from "../../apiConfig";
+import apiClient from '../../api/client';
 
 // --- Icon Components for Header ---
 function UserIcon() {
@@ -69,7 +69,8 @@ const TeacherAdminExamsScreen = () => {
   const [view, setView] = useState("list");
   const [selectedExam, setSelectedExam] = useState(null);
   const [selectedSubmission, setSelectedSubmission] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
+  // ★★★ FIX: Remove global isLoading state that was causing conflicts ★★★
+  // const [isLoading, setIsLoading] = useState(false);
 
   // --- Hooks for Header Functionality ---
   useEffect(() => {
@@ -79,18 +80,12 @@ const TeacherAdminExamsScreen = () => {
         return;
       }
       try {
-        const res = await fetch(`${API_BASE_URL}/api/notifications`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-          setLocalUnreadCount(count);
-          setUnreadCount?.(count);
-        } else {
-          setUnreadCount?.(0);
-        }
-      } catch {
+        const response = await apiClient.get('/notifications');
+        const data = response.data;
+        const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+        setLocalUnreadCount(count);
+        setUnreadCount?.(count);
+      } catch (error) {
         setUnreadCount?.(0);
       }
     }
@@ -107,19 +102,15 @@ const TeacherAdminExamsScreen = () => {
       }
       setLoadingProfile(true);
       try {
-        const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-        if (res.ok) {
-          setProfile(await res.json());
-        } else {
-          setProfile({
-            id: user.id,
-            username: user.username || "Unknown",
-            full_name: user.full_name || "User",
-            role: user.role || "user",
-          });
-        }
-      } catch {
-        setProfile(null);
+        const response = await apiClient.get(`/profiles/${user.id}`);
+        setProfile(response.data);
+      } catch (error) {
+        setProfile({
+          id: user.id,
+          username: user.username || "Unknown",
+          full_name: user.full_name || "User",
+          role: user.role || "user",
+        });
       } finally {
         setLoadingProfile(false);
       }
@@ -205,7 +196,8 @@ const TeacherAdminExamsScreen = () => {
   const renderContent = () => {
     switch (view) {
       case 'list':
-        return <ExamList onCreateNew={handleCreateNew} onEdit={handleEdit} onViewSubmissions={handleViewSubmissions} setIsLoading={setIsLoading} />;
+        // ★★★ FIX: Remove setIsLoading prop causing conflicts ★★★
+        return <ExamList onCreateNew={handleCreateNew} onEdit={handleEdit} onViewSubmissions={handleViewSubmissions} />;
       case 'create':
         return <CreateOrEditExamView examToEdit={selectedExam} onFinish={backToList} />;
       case 'submissions':
@@ -218,7 +210,6 @@ const TeacherAdminExamsScreen = () => {
   };
   
   const getBackButton = () => {
-    // A separate back button is added to the ExamList component itself.
     if (view === 'list') return null;
     
     let backAction = backToList;
@@ -338,7 +329,8 @@ const TeacherAdminExamsScreen = () => {
       </header>
       <main className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-6 sm:py-8">
         {getBackButton()}
-        {(isLoading || loadingProfile) ? (
+        {/* ★★★ FIX: Only show loading for profile, not for content ★★★ */}
+        {loadingProfile ? (
           <div className="flex justify-center items-center py-20">
             <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
           </div>
@@ -350,12 +342,14 @@ const TeacherAdminExamsScreen = () => {
   );
 };
 
-const ExamList = ({ onCreateNew, onEdit, onViewSubmissions, setIsLoading }) => {
+// ★★★ FIX: Remove setIsLoading prop and manage loading internally ★★★
+const ExamList = ({ onCreateNew, onEdit, onViewSubmissions }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [exams, setExams] = useState([]);
+  // ★★★ FIX: Use local loading state ★★★
+  const [isLoading, setIsLoading] = useState(true);
 
-  // This function is needed for the back button
   const getDefaultDashboardRoute = () => {
     if (!user) return "/";
     if (user.role === "admin") return "/AdminDashboard";
@@ -367,15 +361,15 @@ const ExamList = ({ onCreateNew, onEdit, onViewSubmissions, setIsLoading }) => {
     if (!user?.id) return;
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/exams/teacher/${user.id}`);
-      if (!res.ok) throw new Error("Failed to fetch exams.");
-      setExams(await res.json());
+      const response = await apiClient.get(`/exams/teacher/${user.id}`);
+      setExams(response.data);
     } catch (e) {
-      alert(e.message);
+      console.error("Error fetching exams:", e);
+      alert(e.response?.data?.message || "Failed to fetch exams.");
     } finally {
       setIsLoading(false);
     }
-  }, [user?.id, setIsLoading]);
+  }, [user?.id]);
 
   useEffect(() => {
     fetchExams();
@@ -384,20 +378,30 @@ const ExamList = ({ onCreateNew, onEdit, onViewSubmissions, setIsLoading }) => {
   const handleDelete = (exam) => {
     if (window.confirm(`Are you sure you want to delete "${exam.title}"?`)) {
       setIsLoading(true);
-      fetch(`${API_BASE_URL}/api/exams/${exam.exam_id}`, { method: "DELETE" })
-        .then((res) => {
-          if (!res.ok) throw new Error("Failed to delete.");
+      apiClient.delete(`/exams/${exam.exam_id}`)
+        .then(() => {
           setExams((prev) => prev.filter((e) => e.exam_id !== exam.exam_id));
           alert("Exam deleted.");
         })
-        .catch((e) => alert(e.message))
+        .catch((e) => {
+          console.error("Error deleting exam:", e);
+          alert(e.response?.data?.message || "Failed to delete exam.");
+        })
         .finally(() => setIsLoading(false));
     }
   };
 
+  // ★★★ FIX: Show loading inside the component ★★★
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center py-20">
+        <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
   return (
     <>
-      {/* +++ ADDED THIS BACK BUTTON +++ */}
       <div className="mb-6">
         <button
           onClick={() => navigate(getDefaultDashboardRoute())}
@@ -510,23 +514,31 @@ const CreateOrEditExamView = ({ examToEdit, onFinish }) => {
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/student-classes`)
-      .then((res) => res.json()).then(setStudentClasses).catch(console.error);
-    if (isEditMode) {
-      fetch(`${API_BASE_URL}/api/exams/${examToEdit.exam_id}`)
-        .then((res) => {
-          if (!res.ok) throw new Error("Failed to load exam data.");
-          return res.json();
-        })
-        .then((data) => {
+    const bootstrapData = async () => {
+      try {
+        const classesRes = await apiClient.get('/student-classes');
+        setStudentClasses(classesRes.data);
+
+        if (isEditMode) {
+          const examRes = await apiClient.get(`/exams/${examToEdit.exam_id}`);
+          const data = examRes.data;
           setExamDetails({
-            title: data.title, description: data.description || "", class_group: data.class_group, time_limit_mins: String(data.time_limit_mins || "0"),
+            title: data.title, 
+            description: data.description || "", 
+            class_group: data.class_group, 
+            time_limit_mins: String(data.time_limit_mins || "0"),
           });
           setQuestions(data.questions.map((q) => ({ ...q, id: q.question_id })));
-        })
-        .catch((e) => { alert(e.message); onFinish(); })
-        .finally(() => setIsLoading(false));
-    } else { setIsLoading(false); }
+        }
+      } catch (e) {
+        console.error("Error loading exam data:", e);
+        alert(e.response?.data?.message || "Failed to load data.");
+        if(isEditMode) onFinish();
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    bootstrapData();
   }, [examToEdit, isEditMode, onFinish]);
   
   const addQuestion = () => setQuestions([...questions, {
@@ -535,21 +547,28 @@ const CreateOrEditExamView = ({ examToEdit, onFinish }) => {
   const handleQuestionChange = (id, field, value) => setQuestions(questions.map((q) => (q.id === id ? { ...q, [field]: value } : q)));
   const handleOptionChange = (id, optionKey, value) => setQuestions(questions.map((q) => q.id === id ? { ...q, options: { ...q.options, [optionKey]: value } } : q));
   const handleRemoveQuestion = (id) => setQuestions(questions.filter((q) => q.id !== id));
-  const handleSave = () => {
+  
+  const handleSave = async () => {
     if (!user?.id) return alert("Session Error: Could not identify user.");
     if (!examDetails.title || !examDetails.class_group || questions.length === 0) {
       return alert("Title, Class Group, and at least one question are required.");
     }
     setIsSaving(true);
-    const url = isEditMode ? `${API_BASE_URL}/api/exams/${examToEdit.exam_id}` : `${API_BASE_URL}/api/exams`;
-    const method = isEditMode ? "PUT" : "POST";
-    fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...examDetails, questions, teacher_id: user.id }), })
-      .then(async (res) => {
-        if (!res.ok) { const err = await res.json(); throw new Error(err.message || "Failed to save."); }
-        alert(`Exam ${isEditMode ? "updated" : "created"}!`);
-        onFinish();
-      })
-      .catch((e) => alert(e.message)).finally(() => setIsSaving(false));
+    const payload = { ...examDetails, questions, teacher_id: user.id };
+    try {
+      if (isEditMode) {
+        await apiClient.put(`/exams/${examToEdit.exam_id}`, payload);
+      } else {
+        await apiClient.post('/exams', payload);
+      }
+      alert(`Exam ${isEditMode ? "updated" : "created"}!`);
+      onFinish();
+    } catch (e) {
+      console.error("Error saving exam:", e);
+      alert(e.response?.data?.message || "Failed to save exam.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (isLoading) return <div className="flex justify-center items-center py-20"><div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div><p className="ml-4 text-slate-600">Loading exam data...</p></div>;
@@ -637,11 +656,11 @@ const SubmissionsView = ({ exam, onGrade }) => {
   const fetchSubmissions = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/exams/${exam.exam_id}/submissions`);
-      if (!res.ok) throw new Error("Failed to fetch submissions.");
-      setSubmissions(await res.json());
+      const response = await apiClient.get(`/exams/${exam.exam_id}/submissions`);
+      setSubmissions(response.data);
     } catch (e) {
-      alert(e.message);
+      console.error("Error fetching submissions:", e);
+      alert(e.response?.data?.message || "Failed to fetch submissions.");
     } finally {
       setIsLoading(false);
     }
@@ -667,14 +686,14 @@ const GradingView = ({ submission, onFinish }) => {
     const fetchSubmissionDetails = async () => {
       setIsLoading(true);
       try {
-        const res = await fetch(`${API_BASE_URL}/api/submissions/${submission.attempt_id}`);
-        if (!res.ok) throw new Error("Could not fetch submission details.");
-        const details = await res.json();
+        const response = await apiClient.get(`/submissions/${submission.attempt_id}`);
+        const details = response.data;
         setSubmissionDetails(details);
         const initialGrades = details.reduce((acc, item) => ({ ...acc, [item.question_id]: item.marks_awarded || "" }), {});
         setGradedAnswers(initialGrades);
       } catch (e) {
-        alert(e.message);
+        console.error("Error fetching submission details:", e);
+        alert(e.response?.data?.message || "Could not fetch submission details.");
         onFinish();
       } finally {
         setIsLoading(false);
@@ -694,15 +713,16 @@ const GradingView = ({ submission, onFinish }) => {
       question_id: qid, marks_awarded: marks ? Number(marks) : 0,
     }));
     try {
-      const res = await fetch(`${API_BASE_URL}/api/submissions/${submission.attempt_id}/grade`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gradedAnswers: answersPayload, teacher_feedback: "", teacher_id: user.id }),
+      await apiClient.post(`/submissions/${submission.attempt_id}/grade`, {
+        gradedAnswers: answersPayload, 
+        teacher_feedback: "", 
+        teacher_id: user.id
       });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.message || "Failed to submit grade."); }
       alert("Grades submitted successfully!");
       onFinish();
     } catch (e) {
-      alert(e.message);
+      console.error("Error submitting grade:", e);
+      alert(e.response?.data?.message || "Failed to submit grade.");
     } finally {
       setIsSubmittingGrade(false);
     }
@@ -739,7 +759,6 @@ const GradingView = ({ submission, onFinish }) => {
           </div>
         </div>
       ))}
-      {/* +++ UPDATED BUTTONS SECTION +++ */}
       <div className="flex justify-end flex-col-reverse sm:flex-row sm:space-x-4 gap-3 sm:gap-0 pt-4">
         <button className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold transition-all shadow-md disabled:opacity-50" onClick={submitGrade} disabled={isSubmittingGrade}>
           {isSubmittingGrade ? (<div className="flex items-center justify-center"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>Submitting...</div>) : ("Submit Grades")}

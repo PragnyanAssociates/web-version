@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from "react-router-dom";
-import { API_BASE_URL } from "../../apiConfig";
+// ✅ FIXED: Updated imports
+import apiClient from "../../api/client";
 import { useAuth } from "../../context/AuthContext.tsx";
 import { 
     MdArrowBack, 
@@ -13,6 +14,7 @@ import {
     MdLink
 } from 'react-icons/md';
 
+
 // --- Icon Components for Header (Unchanged) ---
 function UserIcon() {
   return (
@@ -23,6 +25,7 @@ function UserIcon() {
   );
 }
 
+
 function HomeIcon() {
   return (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
@@ -31,6 +34,7 @@ function HomeIcon() {
     </svg>
   );
 }
+
 
 function CalendarIcon() {
   return (
@@ -42,6 +46,7 @@ function CalendarIcon() {
     </svg>
   );
 }
+
 
 function BellIcon() {
   return (
@@ -55,6 +60,7 @@ function BellIcon() {
   );
 }
 
+
 function PTMIcon() {
   return (
     <svg className="w-12 h-12 text-slate-400" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
@@ -62,6 +68,7 @@ function PTMIcon() {
     </svg>
   );
 }
+
 
 
 const TeacherAdminPTMScreen = () => {
@@ -82,18 +89,16 @@ const TeacherAdminPTMScreen = () => {
   const initialFormState = { meeting_datetime: '', teacher_id: '', class_group: '', subject_focus: '', status: 'Scheduled', notes: '', meeting_link: '' };
   const [formData, setFormData] = useState(initialFormState);
   
-  // Hooks and helper functions are unchanged
+  // ✅ FIXED: Updated fetchUnreadNotifications function
   useEffect(() => {
     async function fetchUnreadNotifications() {
         if (!token) { setUnreadCount?.(0); return; }
         try {
-            const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-            if (res.ok) {
-                const data = await res.json();
-                const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                setLocalUnreadCount(count);
-                setUnreadCount?.(count);
-            } else { setUnreadCount?.(0); }
+            const response = await apiClient.get('/notifications');
+            const data = response.data;
+            const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+            setLocalUnreadCount(count);
+            setUnreadCount?.(count);
         } catch { setUnreadCount?.(0); }
     }
     fetchUnreadNotifications();
@@ -101,19 +106,23 @@ const TeacherAdminPTMScreen = () => {
     return () => clearInterval(id);
   }, [token, setUnreadCount]);
 
+
+  // ✅ FIXED: Updated fetchProfile function
   useEffect(() => {
       async function fetchProfile() {
           if (!user?.id) { setLoadingProfile(false); return; }
           setLoadingProfile(true);
           try {
-              const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-              if (res.ok) {
-                  setProfile(await res.json());
-              } else {
-                  setProfile({ id: user.id, username: user.username || "Unknown", full_name: user.full_name || "User", role: user.role || "user" });
-              }
-          } catch { setProfile(null); } 
-          finally { setLoadingProfile(false); }
+              const response = await apiClient.get(`/profiles/${user.id}`);
+              setProfile(response.data);
+          } catch {
+              setProfile({ 
+                  id: user.id, 
+                  username: user.username || "Unknown", 
+                  full_name: user.full_name || "User", 
+                  role: user.role || "user" 
+              });
+          } finally { setLoadingProfile(false); }
       }
       fetchProfile();
   }, [user]);
@@ -129,27 +138,28 @@ const TeacherAdminPTMScreen = () => {
     return '/';
   };
 
+
+  // ✅ FIXED: Updated fetchAllData function
   const fetchAllData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [meetingsRes, teachersRes, classesRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/ptm`),
-        fetch(`${API_BASE_URL}/api/ptm/teachers`),
-        fetch(`${API_BASE_URL}/api/ptm/classes`)
-      ]);
-      if (!meetingsRes.ok) throw new Error('Failed to fetch meetings.');
-      if (!teachersRes.ok) throw new Error('Failed to fetch teachers.');
-      if (!classesRes.ok) throw new Error('Failed to fetch classes.');
-      
-      const meetingsData = await meetingsRes.json();
-      meetingsData.sort((a, b) => new Date(b.meeting_datetime) - new Date(a.meeting_datetime));
+        const [meetingsRes, teachersRes, classesRes] = await Promise.all([
+            apiClient.get('/ptm'),
+            apiClient.get('/ptm/teachers'),
+            apiClient.get('/ptm/classes')
+        ]);
+        
+        const meetingsData = meetingsRes.data;
+        meetingsData.sort((a, b) => new Date(b.meeting_datetime) - new Date(a.meeting_datetime));
 
-      setMeetings(meetingsData);
-      setTeachers(await teachersRes.json());
-      setClasses(await classesRes.json());
-    } catch (error) { alert('Error: ' + error.message); } 
-    finally { setIsLoading(false); }
+        setMeetings(meetingsData);
+        setTeachers(teachersRes.data);
+        setClasses(classesRes.data);
+    } catch (error) {
+        alert('Error: ' + (error.response?.data?.message || 'Failed to load data.'));
+    } finally { setIsLoading(false); }
   }, []);
+
 
   useEffect(() => { fetchAllData(); }, [fetchAllData]);
   
@@ -178,34 +188,39 @@ const TeacherAdminPTMScreen = () => {
     setIsModalOpen(true);
   };
   
+  // ✅ FIXED: Updated handleSave function
   const handleSave = async () => {
-    const loggedInUserId = user?.id;
-    const url = editingMeeting ? `${API_BASE_URL}/api/ptm/${editingMeeting.id}` : `${API_BASE_URL}/api/ptm`;
-    const method = editingMeeting ? 'PUT' : 'POST';
-    const body = JSON.stringify(editingMeeting 
-      ? { status: formData.status, notes: formData.notes, meeting_link: formData.meeting_link } 
-      : { ...formData, created_by: loggedInUserId }
-    );
-
+    if (!user) return alert("Error: Authentication session not found.");
+    const body = editingMeeting 
+        ? { status: formData.status, notes: formData.notes, meeting_link: formData.meeting_link } 
+        : { ...formData, created_by: user.id };
+    
     try {
-      const response = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body });
-      const resData = await response.json();
-      if (!response.ok) throw new Error(resData.message || 'Failed to save meeting.');
-      await fetchAllData();
-      setIsModalOpen(false);
-    } catch (error) { alert('Save Error: ' + error.message); }
+        if (editingMeeting) {
+            await apiClient.put(`/ptm/${editingMeeting.id}`, body);
+        } else {
+            await apiClient.post('/ptm', body);
+        }
+        await fetchAllData();
+        setIsModalOpen(false);
+    } catch (error) {
+        alert('Save Error: ' + (error.response?.data?.message || 'Failed to save meeting.'));
+    }
   };
 
+
+  // ✅ FIXED: Updated handleDelete function
   const handleDelete = (id) => {
     if (window.confirm('Are you sure you want to delete this meeting?')) {
-      const deleteOperation = async () => {
-        try {
-          const response = await fetch(`${API_BASE_URL}/api/ptm/${id}`, { method: 'DELETE' });
-          if (!response.ok) throw new Error('Failed to delete.');
-          await fetchAllData();
-        } catch (error) { alert('Error: ' + error.message); }
-      };
-      deleteOperation();
+        const deleteOperation = async () => {
+            try {
+                await apiClient.delete(`/ptm/${id}`);
+                await fetchAllData();
+            } catch (error) {
+                alert('Error: ' + (error.response?.data?.message || 'Failed to delete.'));
+            }
+        };
+        deleteOperation();
     }
   };
   
@@ -222,6 +237,7 @@ const TeacherAdminPTMScreen = () => {
     });
   }, [query, meetings, teachers]);
 
+
   const renderContent = () => {
     if (isLoading || loadingProfile) {
         return (
@@ -231,6 +247,7 @@ const TeacherAdminPTMScreen = () => {
             </div>
         );
     }
+
 
     return (
         <>
@@ -243,6 +260,7 @@ const TeacherAdminPTMScreen = () => {
                     <span>Schedule Meeting</span>
                 </button>
             </div>
+
 
             {filteredMeetings.length === 0 ? (
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 text-center py-20 px-6">
@@ -266,6 +284,7 @@ const TeacherAdminPTMScreen = () => {
                                         <p className="text-slate-800 font-extrabold text-3xl my-0.5">{meetingDate.getDate()}</p>
                                         <p className="text-slate-500 text-sm">{meetingDate.toLocaleString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}</p>
                                     </div>
+
 
                                     {/* Details Section */}
                                     <div className="flex-1 min-w-0 space-y-3">
@@ -318,6 +337,7 @@ const TeacherAdminPTMScreen = () => {
         </>
     );
   };
+
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -375,6 +395,7 @@ const TeacherAdminPTMScreen = () => {
             {renderContent()}
         </main>
 
+
         {/* Modal is unchanged */}
         {isModalOpen && (
             <div className="fixed inset-0 flex justify-center items-center bg-black/50 backdrop-blur-sm z-50 p-4" onClick={() => setIsModalOpen(false)}>
@@ -407,5 +428,6 @@ const TeacherAdminPTMScreen = () => {
     </div>
   );
 };
+
 
 export default TeacherAdminPTMScreen;

@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from "react-router-dom";
 import { useAuth } from '../../context/AuthContext.tsx';
-import { API_BASE_URL } from '../../apiConfig';
+// ★★★ 1. IMPORT apiClient AND SERVER_URL, REMOVE API_BASE_URL ★★★
+import apiClient from '../../api/client';
+import { SERVER_URL } from '../../apiConfig';
 import { FaBook, FaCalendarAlt, FaCalendarCheck, FaPaperclip, FaUpload, FaCheck, FaCheckCircle, FaHourglassHalf, FaGraduationCap, FaChevronDown, FaTimesCircle } from 'react-icons/fa';
 import { AiOutlineLoading3Quarters } from 'react-icons/ai';
 import { MdAssignment, MdArrowBack, MdInfoOutline } from 'react-icons/md';
@@ -47,6 +49,42 @@ function BellIcon() {
     </svg>
   );
 }
+function ProfileAvatar() {
+  const { getProfileImageUrl } = useAuth()
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  
+  const hasValidImage = getProfileImageUrl() && !imageError && imageLoaded
+  
+  return (
+    <div className="relative w-7 h-7 sm:w-9 sm:h-9">
+      {/* Always render the user placeholder */}
+      <div className={`absolute inset-0 rounded-full bg-gray-100 flex items-center justify-center border-2 border-slate-400 transition-opacity duration-200 ${hasValidImage ? 'opacity-0' : 'opacity-100'}`}>
+        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
+        </svg>
+      </div>
+      
+      {/* Profile image overlay */}
+      {getProfileImageUrl() && (
+        <img 
+          src={getProfileImageUrl()} 
+          alt="Profile" 
+          className={`absolute inset-0 w-full h-full rounded-full border border-slate-200 object-cover transition-opacity duration-200 ${hasValidImage ? 'opacity-100' : 'opacity-0'}`}
+          onError={() => {
+            setImageError(true)
+            setImageLoaded(false)
+          }}
+          onLoad={() => {
+            setImageError(false)
+            setImageLoaded(true)
+          }}
+        />
+      )}
+    </div>
+  )
+} 
+
 
 const StudentHomeworkScreen = () => {
   const { user, token, logout, getProfileImageUrl, setUnreadCount } = useAuth();
@@ -65,7 +103,7 @@ const StudentHomeworkScreen = () => {
   const [selectedAssignmentId, setSelectedAssignmentId] = useState(null);
   const [filter, setFilter] = useState('All'); // 'All', 'Pending', 'Completed'
 
-  // --- Hooks for Header Functionality (Unchanged) ---
+  // --- Hooks for Header Functionality ---
   useEffect(() => {
     async function fetchUnreadNotifications() {
         if (!token) {
@@ -73,17 +111,12 @@ const StudentHomeworkScreen = () => {
             return;
         }
         try {
-            const res = await fetch(`${API_BASE_URL}/api/notifications`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            if (res.ok) {
-                const data = await res.json();
-                const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                setLocalUnreadCount(count);
-                setUnreadCount?.(count);
-            } else {
-                setUnreadCount?.(0);
-            }
+            // ★★★ 2. USE apiClient FOR NOTIFICATIONS ★★★
+            const response = await apiClient.get('/notifications');
+            const data = response.data;
+            const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+            setLocalUnreadCount(count);
+            setUnreadCount?.(count);
         } catch {
             setUnreadCount?.(0);
         }
@@ -101,19 +134,16 @@ const StudentHomeworkScreen = () => {
           }
           setLoadingProfile(true);
           try {
-              const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-              if (res.ok) {
-                  setProfile(await res.json());
-              } else {
-                  setProfile({
-                      id: user.id,
-                      username: user.username || "Unknown",
-                      full_name: user.full_name || "User",
-                      role: user.role || "user",
-                  });
-              }
+              // ★★★ 3. USE apiClient FOR PROFILE ★★★
+              const response = await apiClient.get(`/profiles/${user.id}`);
+              setProfile(response.data);
           } catch {
-              setProfile(null);
+              setProfile({
+                  id: user.id,
+                  username: user.username || "Unknown",
+                  full_name: user.full_name || "User",
+                  role: user.role || "user",
+              });
           } finally {
               setLoadingProfile(false);
           }
@@ -121,7 +151,7 @@ const StudentHomeworkScreen = () => {
       fetchProfile();
   }, [user]);
 
-  // --- Helper Functions (Unchanged) ---
+  // --- Helper Functions ---
   const handleLogout = () => {
     if (window.confirm("Are you sure you want to log out?")) {
         logout();
@@ -141,11 +171,16 @@ const StudentHomeworkScreen = () => {
     if (!user) return;
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/homework/student/${user.id}/${user.class_group}`);
-      if (!response.ok) throw new Error("Failed to fetch assignments.");
-      let data = await response.json();
+      // ★★★ 4. USE apiClient FOR ASSIGNMENTS - MATCHES MOBILE VERSION ★★★
+      const response = await apiClient.get(`/homework/student/${user.id}/${user.class_group}`);
+      let data = response.data;
       
-      data.sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
+      // ★★★ 5. MATCH MOBILE SORTING LOGIC ★★★
+      data.sort((a, b) => {
+        if (a.status === 'Pending' && b.status !== 'Pending') return -1;
+        if (a.status !== 'Pending' && b.status === 'Pending') return 1;
+        return new Date(b.due_date).getTime() - new Date(a.due_date).getTime();
+      });
       setAssignments(data);
       // Automatically select the first assignment in the list
       if (data.length > 0) {
@@ -153,8 +188,9 @@ const StudentHomeworkScreen = () => {
       } else {
         setSelectedAssignmentId(null);
       }
-    } catch (e) {
-      alert(e.message);
+    } catch (error) {
+      // ★★★ 6. MATCH MOBILE ERROR HANDLING ★★★
+      alert(error.response?.data?.message || "Failed to fetch assignments.");
     } finally {
       setIsLoading(false);
     }
@@ -175,17 +211,15 @@ const StudentHomeworkScreen = () => {
       formData.append('student_id', user.id);
       formData.append('submission', file);
       try {
-        const fetchResponse = await fetch(`${API_BASE_URL}/api/homework/submit/${assignmentId}`, {
-          method: 'POST',
-          body: formData
+        // ★★★ 7. USE apiClient FOR FILE UPLOAD - MATCHES MOBILE VERSION ★★★
+        await apiClient.post(`/homework/submit/${assignmentId}`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
         });
-        const resData = await fetchResponse.json();
-        if (!fetchResponse.ok) throw new Error(resData.message || 'An unknown error occurred.');
         alert("Homework submitted!");
         fetchAssignments();
-      } catch (err) {
-        console.error("Submission Error:", err);
-        alert(err.message || "Could not submit file.");
+      } catch (error) {
+        console.error("Submission Error:", error);
+        alert(error.response?.data?.message || "Could not submit file.");
       } finally {
         setIsSubmitting(null);
       }
@@ -260,7 +294,8 @@ const StudentHomeworkScreen = () => {
               </div>
               <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
               <div className="flex items-center gap-2 sm:gap-3">
-                <img src={getProfileImageUrl() || "/placeholder.svg"} alt="Profile" className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover" onError={(e) => {e.currentTarget.src = "/assets/profile.png"}} />
+              
+<ProfileAvatar />
                 <div className="hidden sm:flex flex-col">
                   <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">{profile?.full_name || profile?.username || "User"}</span>
                   <span className="text-xs text-slate-600 capitalize">{profile?.role || ""}</span>
@@ -380,7 +415,8 @@ const AssignmentDetail = ({ assignment, onSubmit, isSubmitting }) => {
     
     const status = getStatusInfo();
     const handleViewAttachment = () => {
-        if (assignment.attachment_path) window.open(`${API_BASE_URL}${assignment.attachment_path}`, '_blank');
+        // ★★★ 8. USE SERVER_URL FOR ATTACHMENTS - MATCHES MOBILE VERSION ★★★
+        if (assignment.attachment_path) window.open(`${SERVER_URL}${assignment.attachment_path}`, '_blank');
     };
 
     return (

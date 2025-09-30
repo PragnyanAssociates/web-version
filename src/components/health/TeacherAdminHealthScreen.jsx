@@ -2,9 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { MdPerson, MdChevronRight, MdArrowBack, MdHealthAndSafety } from 'react-icons/md';
 import { useAuth } from '../../context/AuthContext.tsx';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from '../../apiConfig';
+import apiClient from '../../api/client';
 
-// --- Icon Components for Header (Unchanged) ---
+// --- Icon Components for Header ---
 function UserIcon() {
     return (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
@@ -46,7 +46,6 @@ function BellIcon() {
     );
 }
 
-
 const TeacherHealthAdminScreen = () => {
     const { user, token, logout, getProfileImageUrl, setUnreadCount } = useAuth();
     const navigate = useNavigate();
@@ -68,31 +67,40 @@ const TeacherHealthAdminScreen = () => {
     const [isLoadingStudents, setIsLoadingStudents] = useState(false);
     const [error, setError] = useState('');
 
-    // --- Hooks for Header (Unchanged) ---
+    // --- Hooks for Header ---
     useEffect(() => {
         async function fetchProfile() {
             if (!user?.id) return;
             try {
-                const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-                if (res.ok) setProfile(await res.json());
-                else setProfile({ id: user.id, username: user.username || "Unknown", full_name: user.full_name || "User", role: user.role || "user" });
-            } catch { setProfile(null); }
+                const response = await apiClient.get(`/profiles/${user.id}`);
+                setProfile(response.data);
+            } catch (error) {
+                setProfile({ 
+                    id: user.id, 
+                    username: user.username || "Unknown", 
+                    full_name: user.full_name || "User", 
+                    role: user.role || "user" 
+                });
+            }
         }
         fetchProfile();
     }, [user]);
 
     useEffect(() => {
         async function fetchUnreadNotifications() {
-            if (!token) { setUnreadCount?.(0); return; }
+            if (!token) { 
+                setUnreadCount?.(0); 
+                return; 
+            }
             try {
-                const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res.ok) {
-                    const data = await res.json();
-                    const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                    setLocalUnreadCount(count);
-                    setUnreadCount?.(count);
-                } else { setUnreadCount?.(0); }
-            } catch { setUnreadCount?.(0); }
+                const response = await apiClient.get('/notifications');
+                const data = response.data;
+                const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+                setLocalUnreadCount(count);
+                setUnreadCount?.(count);
+            } catch (error) {
+                setUnreadCount?.(0);
+            }
         }
         fetchUnreadNotifications();
         const id = setInterval(fetchUnreadNotifications, 60000);
@@ -105,14 +113,15 @@ const TeacherHealthAdminScreen = () => {
             setIsLoadingClasses(true);
             setError('');
             try {
-                const response = await fetch(`${API_BASE_URL}/api/health/classes`);
-                if (!response.ok) throw new Error('Failed to fetch classes');
-                const data = await response.json();
+                const response = await apiClient.get('/health/classes');
+                const data = response.data;
                 setClasses(data);
-                if (data.length === 0) setError('No classes with assigned students were found.');
+                if (data.length === 0) {
+                    setError('No classes with assigned students were found.');
+                }
             } catch (e) {
-                console.error(e);
-                setError('Could not connect to the server to get classes.');
+                console.error("Error fetching classes:", e);
+                setError(e.response?.data?.message || 'Could not connect to the server.');
             } finally {
                 setIsLoadingClasses(false);
             }
@@ -121,15 +130,28 @@ const TeacherHealthAdminScreen = () => {
     }, []);
 
     const fetchStudents = async (classGroup) => {
-        if (!classGroup) { setStudents([]); setSelectedClass(''); return; }
+        if (!classGroup) { 
+            setStudents([]); 
+            setSelectedClass(''); 
+            setError('');
+            return; 
+        }
         setSelectedClass(classGroup);
         setIsLoadingStudents(true);
-        setStudents([]); // Clear previous students immediately
+        setStudents([]);
+        setError('');
         try {
-            const response = await fetch(`${API_BASE_URL}/api/health/students/${classGroup}`);
-            if (response.ok) setStudents(await response.json());
-        } catch (e) { console.error(e); }
-        finally { setIsLoadingStudents(false); }
+            const response = await apiClient.get(`/health/students/${classGroup}`);
+            setStudents(response.data);
+            if (response.data.length === 0) {
+                setError('No students found in this class.');
+            }
+        } catch (e) {
+            console.error(e);
+            setError(e.response?.data?.message || 'An error occurred while fetching students.');
+        } finally {
+            setIsLoadingStudents(false);
+        }
     };
 
     // --- Helper Functions ---
@@ -162,7 +184,6 @@ const TeacherHealthAdminScreen = () => {
             case 'list':
                 return <StudentListView
                     onSelectStudent={handleSelectStudent}
-                    // Pass all state and handlers down as props
                     classes={classes}
                     selectedClass={selectedClass}
                     students={students}
@@ -280,13 +301,15 @@ const StudentListView = ({
                 </div>
             </div>
 
-            {isLoadingStudents ? (
+            {isLoadingClasses ? (
+                <div className="flex justify-center p-8"><div className="h-10 w-10 border-4 border-slate-200 rounded-full border-t-blue-500 animate-spin"></div></div>
+            ) : isLoadingStudents ? (
                 <div className="flex justify-center p-8"><div className="h-10 w-10 border-4 border-slate-200 rounded-full border-t-blue-500 animate-spin"></div></div>
             ) : error && !selectedClass ? (
                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-8 text-center"><p className="text-md text-slate-600 font-medium">{error}</p></div>
             ) : students.length === 0 && selectedClass ? (
                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-8 text-center"><p className="text-md text-slate-600 font-medium">No students found in {selectedClass}.</p></div>
-            ) : students.length > 0 && (
+            ) : students.length > 0 ? (
                 <div className="space-y-3">
                     {students.map((item, index) => (
                         <button key={item.id} onClick={() => onSelectStudent(item)} className="w-full flex items-center p-4 bg-slate-50 hover:bg-white rounded-lg border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all duration-300 transform hover:-translate-y-1 group" style={{ animation: `fadeInUp 0.5s ease-out ${index * 0.05}s both` }}>
@@ -296,7 +319,9 @@ const StudentListView = ({
                         </button>
                     ))}
                 </div>
-            )}
+            ) : classes.length > 0 && !selectedClass ? (
+                <div className="bg-slate-10 border border-slate-200 rounded-xl p-8 text-center"><p className="text-md text-slate-600 font-medium">Select a class to see students.</p></div>
+            ) : null}
              <style jsx>{` @keyframes fadeInUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }`}</style>
         </>
     );
@@ -310,18 +335,25 @@ const HealthForm = ({ student, onBack }) => {
 
     useEffect(() => {
         const fetchRecord = async () => {
-            const response = await fetch(`${API_BASE_URL}/api/health/record/${student.id}`);
-            if (response.ok) {
-                const data = await response.json();
-                if (data.last_checkup_date) data.last_checkup_date = data.last_checkup_date.split('T')[0];
+            try {
+                const response = await apiClient.get(`/health/record/${student.id}`);
+                const data = response.data;
+                if (data.last_checkup_date) {
+                    data.last_checkup_date = data.last_checkup_date.split('T')[0];
+                }
                 setFormData(data);
+            } catch (error) {
+                // If no record exists, the server might send a 404. We'll start with an empty form.
+                setFormData({});
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
         };
         fetchRecord();
     }, [student]);
 
-    const handleInputChange = (field, value) => setFormData((prev) => ({ ...prev, [field]: value }));
+    const handleInputChange = (field, value) => 
+        setFormData((prev) => ({ ...prev, [field]: value }));
 
     const calculatedBmi = useMemo(() => {
         if (formData?.height_cm && formData?.weight_kg) {
@@ -333,18 +365,23 @@ const HealthForm = ({ student, onBack }) => {
     }, [formData.height_cm, formData.weight_kg]);
 
     const handleSaveChanges = async () => {
-        if (!editor) { alert('Could not identify the editor.'); return; }
+        if (!editor) {
+            alert('Could not identify the editor.');
+            return;
+        }
         setSaving(true);
         try {
-            const response = await fetch(`${API_BASE_URL}/api/health/record/${student.id}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...formData, editorId: editor.id }),
+            await apiClient.post(`/health/record/${student.id}`, {
+                ...formData, 
+                editorId: editor.id 
             });
-            if (response.ok) { alert('Health record saved.'); onBack(); }
-            else { alert('Failed to save record.'); }
-        } catch (e) { alert('An error occurred.'); }
-        finally { setSaving(false); }
+            alert('Health record saved.');
+            onBack();
+        } catch (e) {
+            alert(e.response?.data?.message || 'Failed to save record.');
+        } finally {
+            setSaving(false);
+        }
     };
 
     if (loading)

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from "react-router-dom";
 import { useAuth } from '../../context/AuthContext.tsx';
-import { API_BASE_URL } from '../../apiConfig';
+// ★★★ 1. IMPORT apiClient AND REMOVE API_BASE_URL ★★★
+import apiClient from '../../api/client';
 import { MdArrowBack } from 'react-icons/md';
 
 // --- Icon Components for Header ---
@@ -45,6 +46,42 @@ function BellIcon() {
     </svg>
   );
 }
+function ProfileAvatar() {
+  const { getProfileImageUrl } = useAuth()
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  
+  const hasValidImage = getProfileImageUrl() && !imageError && imageLoaded
+  
+  return (
+    <div className="relative w-7 h-7 sm:w-9 sm:h-9">
+      {/* Always render the user placeholder */}
+      <div className={`absolute inset-0 rounded-full bg-gray-100 flex items-center justify-center border-2 border-slate-400 transition-opacity duration-200 ${hasValidImage ? 'opacity-0' : 'opacity-100'}`}>
+        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
+        </svg>
+      </div>
+      
+      {/* Profile image overlay */}
+      {getProfileImageUrl() && (
+        <img 
+          src={getProfileImageUrl()} 
+          alt="Profile" 
+          className={`absolute inset-0 w-full h-full rounded-full border border-slate-200 object-cover transition-opacity duration-200 ${hasValidImage ? 'opacity-100' : 'opacity-0'}`}
+          onError={() => {
+            setImageError(true)
+            setImageLoaded(false)
+          }}
+          onLoad={() => {
+            setImageError(false)
+            setImageLoaded(true)
+          }}
+        />
+      )}
+    </div>
+  )
+} 
+
 
 // --- Icons for Redesigned Body ---
 const ShieldCheckIcon = ({ className }) => (
@@ -143,7 +180,7 @@ const StudentSportsScreen = () => {
     const [available, setAvailable] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    // --- Hooks for Header Functionality (UNCHANGED) ---
+    // --- Hooks for Header Functionality ---
     useEffect(() => {
         async function fetchUnreadNotifications() {
             if (!token) {
@@ -151,17 +188,12 @@ const StudentSportsScreen = () => {
                 return;
             }
             try {
-                const res = await fetch(`${API_BASE_URL}/api/notifications`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                    setLocalUnreadCount(count);
-                    setUnreadCount?.(count);
-                } else {
-                    setUnreadCount?.(0);
-                }
+                // ★★★ 2. USE apiClient FOR NOTIFICATIONS ★★★
+                const response = await apiClient.get('/notifications');
+                const data = response.data;
+                const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+                setLocalUnreadCount(count);
+                setUnreadCount?.(count);
             } catch {
                 setUnreadCount?.(0);
             }
@@ -179,19 +211,16 @@ const StudentSportsScreen = () => {
             }
             setLoadingProfile(true);
             try {
-                const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-                if (res.ok) {
-                    setProfile(await res.json());
-                } else {
-                    setProfile({
-                        id: user.id,
-                        username: user.username || "Unknown",
-                        full_name: user.full_name || "User",
-                        role: user.role || "user",
-                    });
-                }
+                // ★★★ 3. USE apiClient FOR PROFILE ★★★
+                const response = await apiClient.get(`/profiles/${user.id}`);
+                setProfile(response.data);
             } catch {
-                setProfile(null);
+                setProfile({
+                    id: user.id,
+                    username: user.username || "Unknown",
+                    full_name: user.full_name || "User",
+                    role: user.role || "user",
+                });
             } finally {
                 setLoadingProfile(false);
             }
@@ -199,7 +228,7 @@ const StudentSportsScreen = () => {
         fetchProfile();
     }, [user]);
 
-    // --- Helper Functions (UNCHANGED) ---
+    // --- Helper Functions ---
     const handleLogout = () => {
         if (window.confirm("Are you sure you want to log out?")) {
             logout();
@@ -219,17 +248,17 @@ const StudentSportsScreen = () => {
         if (!user) return;
         setLoading(true);
         try {
+            // ★★★ 4. USE apiClient WITH PROMISE.ALL - MATCHES MOBILE VERSION ★★★
             const [regRes, availRes] = await Promise.all([
-                fetch(`${API_BASE_URL}/api/sports/my-registrations/${user.id}`),
-                fetch(`${API_BASE_URL}/api/sports/available/${user.id}`),
+                apiClient.get(`/sports/my-registrations/${user.id}`),
+                apiClient.get(`/sports/available/${user.id}`)
             ]);
-            if (!regRes.ok || !availRes.ok) throw new Error('Failed to load data');
-            const regData = await regRes.json();
-            const availData = await availRes.json();
-            setRegistered(regData);
-            setAvailable(availData);
+            // ★★★ 5. USE response.data PATTERN - MATCHES MOBILE VERSION ★★★
+            setRegistered(regRes.data);
+            setAvailable(availRes.data);
         } catch (error) {
             console.error("Error fetching sports data:", error);
+            // ★★★ 6. MATCH MOBILE ERROR HANDLING ★★★
             window.alert("Error: Could not load sports activities.");
         } finally {
             setLoading(false);
@@ -242,18 +271,21 @@ const StudentSportsScreen = () => {
 
     const handleApply = async (activityId) => {
         try {
-            const response = await fetch(`${API_BASE_URL}/api/sports/apply`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: user.id, activityId }),
+            // ★★★ 7. USE apiClient.post - MATCHES MOBILE VERSION ★★★
+            const response = await apiClient.post('/sports/apply', { 
+                userId: user.id, 
+                activityId 
             });
-            const data = await response.json();
-            window.alert(data.message);
+
+            // ★★★ 8. USE response.ok AND response.data - MATCHES MOBILE VERSION ★★★
+            window.alert(response.ok ? "Success: " + response.data.message : "Info: " + response.data.message);
             if (response.ok) {
-                fetchData();
+                fetchData(); // Refresh the lists
             }
         } catch (error) {
-            window.alert("Error: An application error occurred.");
+            console.error("Application error:", error);
+            // ★★★ 9. MATCH MOBILE ERROR HANDLING ★★★
+            window.alert("Error: An application error occurred. Please try again.");
         }
     };
     
@@ -269,7 +301,6 @@ const StudentSportsScreen = () => {
             item.name.toLowerCase().includes(query.toLowerCase()) ||
             item.coach_name.toLowerCase().includes(query.toLowerCase())
         ), [available, query]);
-
 
     const renderContent = () => {
         if (loading || loadingProfile) {
@@ -299,7 +330,6 @@ const StudentSportsScreen = () => {
 
     return (
         <div className="min-h-screen bg-slate-50">
-            {/* --- HEADER IS UNCHANGED --- */}
             <header className="border-b border-slate-200 bg-slate-100 sticky top-0 z-40">
                 <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-3">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
@@ -355,14 +385,8 @@ const StudentSportsScreen = () => {
                             <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
 
                             <div className="flex items-center gap-2 sm:gap-3">
-                                <img
-                                    src={getProfileImageUrl() || "/placeholder.svg"}
-                                    alt="Profile"
-                                    className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover"
-                                    onError={(e) => {
-                                        e.currentTarget.src = "/assets/profile.png"
-                                    }}
-                                />
+                               
+<ProfileAvatar />
                                 <div className="hidden sm:flex flex-col">
                                     <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">
                                         {profile?.full_name || profile?.username || "User"}
@@ -396,7 +420,6 @@ const StudentSportsScreen = () => {
                 </div>
             </header>
 
-            {/* --- REDESIGNED MAIN CONTENT --- */}
             <main className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-6 sm:py-8">
                 <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-8">
                     <button
@@ -432,7 +455,6 @@ const StudentSportsScreen = () => {
         </div>
     );
 };
-
 
 // --- REDESIGNED CARD COMPONENTS ---
 
@@ -515,6 +537,5 @@ const AvailableCard = ({ item, onApply }) => (
       </div>
     </div>
 );
-
 
 export default StudentSportsScreen;

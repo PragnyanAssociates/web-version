@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from '../../apiConfig';
+import { SERVER_URL } from '../../apiConfig'; // ✅ Fixed import path
+import apiClient from '../../api/client'; // ✅ Use apiClient instead of fetch
 import { useAuth } from '../../context/AuthContext.tsx';
 import { MdPhotoLibrary, MdCloudUpload, MdEvent, MdTitle, MdClose, MdDelete, MdAdd, MdArrowBack } from "react-icons/md";
 
@@ -73,26 +74,37 @@ export default function GalleryScreen() {
         async function fetchProfile() {
             if (!user?.id) return;
             try {
-                const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-                if (res.ok) setProfile(await res.json());
-                else setProfile({ id: user.id, username: user.username || "Unknown", full_name: user.full_name || "User", role: user.role || "user" });
-            } catch { setProfile(null); }
+                // ✅ Fixed: Use apiClient instead of fetch
+                const response = await apiClient.get(`/profiles/${user.id}`);
+                setProfile(response.data);
+            } catch {
+                setProfile({ 
+                    id: user.id, 
+                    username: user.username || "Unknown", 
+                    full_name: user.full_name || "User", 
+                    role: user.role || "user" 
+                });
+            }
         }
         fetchProfile();
     }, [user]);
 
     useEffect(() => {
         async function fetchUnreadNotifications() {
-            if (!token) { setUnreadCount?.(0); return; }
+            if (!token) { 
+                setUnreadCount?.(0); 
+                return; 
+            }
             try {
-                const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res.ok) {
-                    const data = await res.json();
-                    const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                    setLocalUnreadCount(count);
-                    setUnreadCount?.(count);
-                } else { setUnreadCount?.(0); }
-            } catch { setUnreadCount?.(0); }
+                // ✅ Fixed: Use apiClient instead of fetch
+                const response = await apiClient.get('/notifications');
+                const data = response.data;
+                const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+                setLocalUnreadCount(count);
+                setUnreadCount?.(count);
+            } catch { 
+                setUnreadCount?.(0); 
+            }
         }
         fetchUnreadNotifications();
         const id = setInterval(fetchUnreadNotifications, 60000);
@@ -107,30 +119,33 @@ export default function GalleryScreen() {
     };
 
     // --- Main Gallery Logic ---
-    useEffect(() => {
-        fetchGalleryData();
-    }, []);
-
-    async function fetchGalleryData() {
+    const fetchGalleryData = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/gallery`);
-            const data = await res.json();
+            // ✅ Fixed: Use apiClient instead of fetch
+            const response = await apiClient.get('/gallery');
+            const data = response.data;
             const allAlbums = groupDataByTitle(data || []);
             setPhotoAlbums(allAlbums.filter((album) => album.items.some((i) => i.file_type === "photo")));
             setVideoAlbums(allAlbums.filter((album) => album.items.some((i) => i.file_type === "video")));
         } catch (e) {
-            alert("Failed to load gallery.");
+            console.error('Failed to fetch gallery items:', e);
+            alert(e.response?.data?.message || "Failed to load gallery items.");
             setPhotoAlbums([]);
             setVideoAlbums([]);
         } finally {
             setLoading(false);
         }
-    }
+    }, []);
+
+    useEffect(() => {
+        fetchGalleryData();
+    }, [fetchGalleryData]);
 
     function groupDataByTitle(data) {
+        if (!data || !Array.isArray(data)) return [];
         const grouped = {};
-        (data || []).forEach((item) => {
+        data.forEach((item) => {
             if (!grouped[item.title])
                 grouped[item.title] = { title: item.title, date: item.event_date, items: [] };
             grouped[item.title].items.push(item);
@@ -149,20 +164,15 @@ export default function GalleryScreen() {
         e.stopPropagation();
         if (window.confirm(`Are you sure you want to permanently delete the "${albumTitle}" album and all its contents? This cannot be undone.`)) {
             try {
-                const response = await fetch(`${API_BASE_URL}/api/gallery/album`, {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title: albumTitle, role: user?.role }),
+                // ✅ Fixed: Use apiClient instead of fetch
+                await apiClient.delete('/gallery/album', { 
+                    data: { title: albumTitle, role: user?.role } 
                 });
-                if (response.ok) {
-                    alert(`Album "${albumTitle}" has been deleted.`);
-                    fetchGalleryData();
-                } else {
-                    alert("Failed to delete album.");
-                }
+                alert(`Album "${albumTitle}" has been deleted.`);
+                fetchGalleryData();
             } catch (error) {
                 console.error("Failed to delete album:", error);
-                alert("An error occurred while deleting the album.");
+                alert(error.response?.data?.message || "An error occurred while deleting the album.");
             }
         }
     }
@@ -181,23 +191,21 @@ export default function GalleryScreen() {
         formData.append("adminId", String(user.id));
         formData.append("media", uploadFile);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/gallery/upload`, {
-                method: "POST",
-                body: formData,
+            // ✅ Fixed: Use apiClient instead of fetch
+            await apiClient.post('/gallery/upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
             });
-            const ok = res.ok;
+            alert("Upload successful!");
+            setUploadModalOpen(false);
+            setUploadTitle("");
+            setUploadDate(new Date().toISOString().split("T")[0]);
+            setUploadFile(null);
+            fetchGalleryData();
+        } catch (error) {
+            console.error('Upload failed:', error);
+            alert(error.response?.data?.message || "Failed to upload media.");
+        } finally {
             setIsUploading(false);
-            if (ok) {
-                alert("Upload successful!");
-                setUploadModalOpen(false);
-                fetchGalleryData();
-            } else {
-                const err = await res.json();
-                alert(err.message || "Upload error");
-            }
-        } catch {
-            setIsUploading(false);
-            alert("Failed to upload.");
         }
     }
 
@@ -206,6 +214,7 @@ export default function GalleryScreen() {
         if (user.role === 'admin') return '/AdminDashboard';
         if (user.role === 'teacher') return '/TeacherDashboard';
         if (user.role === 'student') return '/StudentDashboard';
+        if (user.role === 'donor') return '/DonorDashboard';
         return '/';
     };
 
@@ -220,38 +229,80 @@ export default function GalleryScreen() {
                         </div>
                         <div className="flex items-center flex-wrap justify-end gap-2 sm:gap-3">
                             <div className="relative">
-                                <input id="module-search" type="text" value={headerQuery} onChange={(e) => setHeaderQuery(e.target.value)} placeholder="Search ..." className="w-full sm:w-44 lg:w-64 rounded-md border border-slate-200 bg-white px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                                <input 
+                                    id="module-search" 
+                                    type="text" 
+                                    value={headerQuery} 
+                                    onChange={(e) => setHeaderQuery(e.target.value)} 
+                                    placeholder="Search..." 
+                                    className="w-full sm:w-44 lg:w-64 rounded-md border border-slate-200 bg-white px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                />
                             </div>
                             <div className="inline-flex items-stretch rounded-lg border border-slate-200 bg-white overflow-hidden">
-                                <button onClick={() => navigate(getDefaultDashboardRoute())} className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition" type="button" title="Home">
+                                <button 
+                                    onClick={() => navigate(getDefaultDashboardRoute())} 
+                                    className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition" 
+                                    type="button" 
+                                    title="Home"
+                                >
                                     <HomeIcon />
                                     <span className="hidden md:inline">Home</span>
                                 </button>
                                 <div className="w-px bg-slate-200" aria-hidden="true" />
-                                <button onClick={() => navigate("/AcademicCalendar")} className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition" type="button" title="Calendar">
+                                <button 
+                                    onClick={() => navigate("/AcademicCalendar")} 
+                                    className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition" 
+                                    type="button" 
+                                    title="Calendar"
+                                >
                                     <CalendarIcon />
                                     <span className="hidden md:inline">Calendar</span>
                                 </button>
                                 <div className="w-px bg-slate-200" aria-hidden="true" />
-                                <button onClick={() => navigate("/ProfileScreen")} className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition" type="button" title="Profile">
+                                <button 
+                                    onClick={() => navigate("/ProfileScreen")} 
+                                    className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition" 
+                                    type="button" 
+                                    title="Profile"
+                                >
                                     <UserIcon />
                                     <span className="hidden md:inline">Profile</span>
                                 </button>
                             </div>
                             <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
                             <div className="flex items-center gap-2 sm:gap-3">
-                                <img src={getProfileImageUrl() || "/placeholder.svg"} alt="Profile" className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover" onError={(e) => { e.currentTarget.src = "/assets/profile.png" }} />
+                                <img 
+                                    src={getProfileImageUrl() || "/placeholder.svg"} 
+                                    alt="Profile" 
+                                    className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover" 
+                                    onError={(e) => { e.currentTarget.src = "/assets/profile.png" }} 
+                                />
                                 <div className="hidden sm:flex flex-col">
-                                    <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">{profile?.full_name || profile?.username || "User"}</span>
+                                    <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">
+                                        {profile?.full_name || profile?.username || "User"}
+                                    </span>
                                     <span className="text-xs text-slate-600 capitalize">{profile?.role || ""}</span>
                                 </div>
-                                <button onClick={handleLogout} className="inline-flex items-center rounded-md bg-blue-600 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                                <button 
+                                    onClick={handleLogout} 
+                                    className="inline-flex items-center rounded-md bg-blue-600 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                                >
                                     <span className="hidden sm:inline">Logout</span>
                                     <span className="sm:hidden">Exit</span>
                                 </button>
-                                <button onClick={() => navigate("/NotificationsScreen")} className="relative inline-flex items-center justify-center rounded-full border border-slate-200 bg-white p-1.5 sm:p-2 text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="Notifications" title="Notifications" type="button">
+                                <button 
+                                    onClick={() => navigate("/NotificationsScreen")} 
+                                    className="relative inline-flex items-center justify-center rounded-full border border-slate-200 bg-white p-1.5 sm:p-2 text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" 
+                                    aria-label="Notifications" 
+                                    title="Notifications" 
+                                    type="button"
+                                >
                                     <BellIcon />
-                                    {unreadCount > 0 && (<span className="absolute -top-0.5 sm:-top-1 -right-0.5 sm:-right-1 px-1 sm:px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-white bg-red-600 rounded-full min-w-[16px] sm:min-w-[18px]">{unreadCount > 99 ? "99+" : unreadCount}</span>)}
+                                    {unreadCount > 0 && (
+                                        <span className="absolute -top-0.5 sm:-top-1 -right-0.5 sm:-right-1 px-1 sm:px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-white bg-red-600 rounded-full min-w-[16px] sm:min-w-[18px]">
+                                            {unreadCount > 99 ? "99+" : unreadCount}
+                                        </span>
+                                    )}
                                 </button>
                             </div>
                         </div>
@@ -263,12 +314,18 @@ export default function GalleryScreen() {
                 {/* --- UNIFIED BACK BUTTON --- */}
                 <div className="mb-6">
                     {viewingAlbum ? (
-                        <button onClick={() => setViewingAlbum(null)} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors">
+                        <button 
+                            onClick={() => setViewingAlbum(null)} 
+                            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors"
+                        >
                             <MdArrowBack className="w-5 h-5" />
                             <span>Back to Albums</span>
                         </button>
                     ) : (
-                        <button onClick={() => navigate(getDefaultDashboardRoute())} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors">
+                        <button 
+                            onClick={() => navigate(getDefaultDashboardRoute())} 
+                            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors"
+                        >
                             <MdArrowBack className="w-5 h-5" />
                             <span>Back to Dashboard</span>
                         </button>
@@ -280,6 +337,7 @@ export default function GalleryScreen() {
                     <AlbumDetailScreen
                         title={viewingAlbum.title}
                         items={viewingAlbum.items}
+                        onRefresh={fetchGalleryData}
                     />
                 ) : (
                     <>
@@ -288,7 +346,7 @@ export default function GalleryScreen() {
                                 className={`px-5 py-2 rounded-full font-semibold shadow ${tab === "photos"
                                     ? "bg-blue-600 text-white"
                                     : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                                    }`}
+                                }`}
                                 onClick={() => setTab("photos")}
                                 type="button"
                             >
@@ -298,7 +356,7 @@ export default function GalleryScreen() {
                                 className={`px-5 py-2 rounded-full font-semibold shadow ${tab === "videos"
                                     ? "bg-blue-600 text-white"
                                     : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                                    }`}
+                                }`}
                                 onClick={() => setTab("videos")}
                                 type="button"
                             >
@@ -308,11 +366,28 @@ export default function GalleryScreen() {
                         {loading ? (
                             <div className="flex flex-col items-center justify-center h-60">
                                 <GallerySpinner />
+                                <p className="text-gray-600 font-medium mt-4">Loading gallery...</p>
                             </div>
                         ) : (
                             <div>
-                                {tab === "photos" && <AlbumList albums={photoAlbums} onClick={openAlbum} onDelete={handleDeleteAlbum} isAdmin={isAdmin} type="photo" />}
-                                {tab === "videos" && <AlbumList albums={videoAlbums} onClick={openAlbum} onDelete={handleDeleteAlbum} isAdmin={isAdmin} type="video" />}
+                                {tab === "photos" && (
+                                    <AlbumList 
+                                        albums={photoAlbums} 
+                                        onClick={openAlbum} 
+                                        onDelete={handleDeleteAlbum} 
+                                        isAdmin={isAdmin} 
+                                        type="photo" 
+                                    />
+                                )}
+                                {tab === "videos" && (
+                                    <AlbumList 
+                                        albums={videoAlbums} 
+                                        onClick={openAlbum} 
+                                        onDelete={handleDeleteAlbum} 
+                                        isAdmin={isAdmin} 
+                                        type="video" 
+                                    />
+                                )}
                             </div>
                         )}
                         {isAdmin && (
@@ -414,8 +489,7 @@ export default function GalleryScreen() {
                                 <button
                                     type="submit"
                                     disabled={isUploading}
-                                    className={`px-8 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:opacity-70 disabled:cursor-not-allowed rounded-2xl text-white font-semibold transition-all duration-300 transform hover:scale-105 active:scale-95 border border-white/20 shadow-lg backdrop-blur-sm flex items-center space-x-2 ${isUploading ? "animate-pulse" : ""
-                                        }`}
+                                    className={`px-8 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:opacity-70 disabled:cursor-not-allowed rounded-2xl text-white font-semibold transition-all duration-300 transform hover:scale-105 active:scale-95 border border-white/20 shadow-lg backdrop-blur-sm flex items-center space-x-2 ${isUploading ? "animate-pulse" : ""}`}
                                 >
                                     {isUploading ? (
                                         <>
@@ -439,14 +513,13 @@ export default function GalleryScreen() {
 }
 
 // --- AlbumDetailScreen Component ---
-function AlbumDetailScreen({ title, items }) {
+function AlbumDetailScreen({ title, items, onRefresh }) {
     items = Array.isArray(items) ? items : [];
 
     const [imageModalOpen, setImageModalOpen] = useState(false);
     const [videoModalOpen, setVideoModalOpen] = useState(false);
     const [selectedImageUri, setSelectedImageUri] = useState(null);
     const [selectedVideoUri, setSelectedVideoUri] = useState(null);
-
     const [uploadModalOpen, setUploadModalOpen] = useState(false);
     const [uploadDate, setUploadDate] = useState(() => new Date().toISOString().split("T")[0]);
     const [uploadFile, setUploadFile] = useState(null);
@@ -457,10 +530,10 @@ function AlbumDetailScreen({ title, items }) {
 
     const handleItemClick = (item) => {
         if (item.file_type === "photo") {
-            setSelectedImageUri(`${API_BASE_URL}/${item.file_path}`);
+            setSelectedImageUri(`${SERVER_URL}${item.file_path}`); // ✅ Fixed: Use SERVER_URL
             setImageModalOpen(true);
         } else {
-            setSelectedVideoUri(`${API_BASE_URL}/${item.file_path}`);
+            setSelectedVideoUri(`${SERVER_URL}${item.file_path}`); // ✅ Fixed: Use SERVER_URL
             setVideoModalOpen(true);
         }
     };
@@ -476,20 +549,15 @@ function AlbumDetailScreen({ title, items }) {
         e.stopPropagation();
         if (window.confirm('Are you sure you want to delete this item? This cannot be undone.')) {
             try {
-                const response = await fetch(`${API_BASE_URL}/api/gallery/${itemId}`, {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ role: user?.role }),
+                // ✅ Fixed: Use apiClient instead of fetch
+                await apiClient.delete(`/gallery/${itemId}`, {
+                    data: { role: user?.role }
                 });
-                if (response.ok) {
-                    alert('Item deleted successfully!');
-                    window.location.reload();
-                } else {
-                    alert('Failed to delete item.');
-                }
+                alert('Item deleted successfully!');
+                onRefresh?.();
             } catch (error) {
                 console.error('Failed to delete item:', error);
-                alert('An error occurred while deleting the item.');
+                alert(error.response?.data?.message || 'An error occurred while deleting the item.');
             }
         }
     };
@@ -508,23 +576,20 @@ function AlbumDetailScreen({ title, items }) {
         formData.append("adminId", String(user.id));
         formData.append("media", uploadFile);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/gallery/upload`, {
-                method: "POST",
-                body: formData,
+            // ✅ Fixed: Use apiClient instead of fetch
+            await apiClient.post('/gallery/upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
             });
-            const ok = res.ok;
+            alert("Upload successful!");
+            setUploadModalOpen(false);
+            setUploadDate(new Date().toISOString().split("T")[0]);
+            setUploadFile(null);
+            onRefresh?.();
+        } catch (error) {
+            console.error('Upload failed:', error);
+            alert(error.response?.data?.message || "Failed to upload media.");
+        } finally {
             setIsUploading(false);
-            if (ok) {
-                alert("Upload successful!");
-                setUploadModalOpen(false);
-                window.location.reload();
-            } else {
-                const err = await res.json();
-                alert(err.message || "Upload error");
-            }
-        } catch {
-            setIsUploading(false);
-            alert("Failed to upload.");
         }
     };
 
@@ -564,7 +629,7 @@ function AlbumDetailScreen({ title, items }) {
                                     {item.file_type === "photo" ? (
                                         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-gray-100 to-gray-200 shadow-lg border border-white/30">
                                             <img
-                                                src={`${API_BASE_URL}/${item.file_path}`}
+                                                src={`${SERVER_URL}${item.file_path}`} // ✅ Fixed: Use SERVER_URL
                                                 alt={item.title || ""}
                                                 className="w-full h-32 sm:h-40 object-cover transition-all duration-300 group-hover:scale-110"
                                                 loading="lazy"
@@ -627,7 +692,13 @@ function AlbumDetailScreen({ title, items }) {
                                     <MdEvent size={20} className="text-blue-600" />
                                     <label className="block text-sm font-semibold text-gray-700 tracking-wide">Event Date</label>
                                 </div>
-                                <input type="date" className="w-full border-2 border-gray-200/60 rounded-2xl p-4 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 focus:outline-none transition-all duration-300 bg-white/80 backdrop-blur-sm shadow-inner text-base font-medium" value={uploadDate} onChange={(e) => setUploadDate(e.target.value)} required />
+                                <input 
+                                    type="date" 
+                                    className="w-full border-2 border-gray-200/60 rounded-2xl p-4 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 focus:outline-none transition-all duration-300 bg-white/80 backdrop-blur-sm shadow-inner text-base font-medium" 
+                                    value={uploadDate} 
+                                    onChange={(e) => setUploadDate(e.target.value)} 
+                                    required 
+                                />
                             </div>
                             <div className="space-y-4">
                                 <div className="flex items-center space-x-2">
@@ -635,7 +706,13 @@ function AlbumDetailScreen({ title, items }) {
                                     <label className="block text-sm font-semibold text-gray-700 tracking-wide">Select Photo/Video</label>
                                 </div>
                                 <div className="relative">
-                                    <input type="file" accept="image/*,video/*" className="block w-full border-2 border-dashed border-gray-300/60 rounded-2xl p-6 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 focus:outline-none transition-all duration-300 bg-gradient-to-br from-gray-50/50 to-white/50 backdrop-blur-sm text-base font-medium file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" onChange={(e) => setUploadFile(e.target.files ? e.target.files[0] : null)} required />
+                                    <input 
+                                        type="file" 
+                                        accept="image/*,video/*" 
+                                        className="block w-full border-2 border-dashed border-gray-300/60 rounded-2xl p-6 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 focus:outline-none transition-all duration-300 bg-gradient-to-br from-gray-50/50 to-white/50 backdrop-blur-sm text-base font-medium file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" 
+                                        onChange={(e) => setUploadFile(e.target.files ? e.target.files[0] : null)} 
+                                        required 
+                                    />
                                     {uploadFile && (
                                         <div className="mt-3 p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl border border-blue-200/60">
                                             <div className="flex items-center space-x-2">
@@ -647,9 +724,29 @@ function AlbumDetailScreen({ title, items }) {
                                 </div>
                             </div>
                             <div className="flex justify-end gap-4 pt-6 border-t border-gray-200/60">
-                                <button type="button" className="px-6 py-3 bg-gradient-to-r from-gray-200 to-gray-300 hover:from-gray-300 hover:to-gray-400 rounded-2xl text-gray-800 font-semibold transition-all duration-300 transform hover:scale-105 active:scale-95 border border-white/30 shadow-lg" onClick={() => setUploadModalOpen(false)} >Cancel</button>
-                                <button type="submit" disabled={isUploading} className={`px-8 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:opacity-70 disabled:cursor-not-allowed rounded-2xl text-white font-semibold transition-all duration-300 transform hover:scale-105 active:scale-95 border border-white/20 shadow-lg backdrop-blur-sm flex items-center space-x-2 ${isUploading ? "animate-pulse" : ""}`}>
-                                    {isUploading ? (<><div className="w-4 h-4 border-2 border-white/30 rounded-full border-t-white animate-spin"></div><span>Adding...</span></>) : (<><MdAdd size={18} /><span>Add to Album</span></>)}
+                                <button 
+                                    type="button" 
+                                    className="px-6 py-3 bg-gradient-to-r from-gray-200 to-gray-300 hover:from-gray-300 hover:to-gray-400 rounded-2xl text-gray-800 font-semibold transition-all duration-300 transform hover:scale-105 active:scale-95 border border-white/30 shadow-lg" 
+                                    onClick={() => setUploadModalOpen(false)} 
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    type="submit" 
+                                    disabled={isUploading} 
+                                    className={`px-8 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:opacity-70 disabled:cursor-not-allowed rounded-2xl text-white font-semibold transition-all duration-300 transform hover:scale-105 active:scale-95 border border-white/20 shadow-lg backdrop-blur-sm flex items-center space-x-2 ${isUploading ? "animate-pulse" : ""}`}
+                                >
+                                    {isUploading ? (
+                                        <>
+                                            <div className="w-4 h-4 border-2 border-white/30 rounded-full border-t-white animate-spin"></div>
+                                            <span>Adding...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <MdAdd size={18} />
+                                            <span>Add to Album</span>
+                                        </>
+                                    )}
                                 </button>
                             </div>
                         </form>
@@ -658,21 +755,38 @@ function AlbumDetailScreen({ title, items }) {
             )}
             {imageModalOpen && (
                 <Modal onClose={closeModal}>
-                    <img src={selectedImageUri} alt="" className="max-h-[80vh] max-w-[96vw] rounded-2xl shadow-2xl object-contain mx-auto border border-white/20" style={{ background: "rgba(255,255,255,0.05)" }} />
+                    <img 
+                        src={selectedImageUri} 
+                        alt="" 
+                        className="max-h-[80vh] max-w-[96vw] rounded-2xl shadow-2xl object-contain mx-auto border border-white/20" 
+                        style={{ background: "rgba(255,255,255,0.05)" }} 
+                    />
                 </Modal>
             )}
             {videoModalOpen && (
                 <Modal onClose={closeModal}>
                     <div className="w-[90vw] max-w-4xl flex items-center justify-center">
-                        <video src={selectedVideoUri} controls className="bg-black rounded-2xl shadow-2xl w-full max-h-[75vh] border border-white/20" style={{ outline: "none" }} preload="auto">Your browser does not support the video tag.</video>
+                        <video 
+                            src={selectedVideoUri} 
+                            controls 
+                            className="bg-black rounded-2xl shadow-2xl w-full max-h-[75vh] border border-white/20" 
+                            style={{ outline: "none" }} 
+                            preload="auto"
+                        >
+                            Your browser does not support the video tag.
+                        </video>
                     </div>
                 </Modal>
             )}
-            <style jsx>{` @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+            <style jsx>{`
+                @keyframes fadeInUp { 
+                    from { opacity: 0; transform: translateY(20px); } 
+                    to { opacity: 1; transform: translateY(0); } 
+                }
+            `}</style>
         </div>
     );
 }
-
 
 function AlbumList({ albums, onClick, onDelete, isAdmin, type }) {
     if (!albums || !albums.length)
@@ -722,7 +836,7 @@ function AlbumList({ albums, onClick, onDelete, isAdmin, type }) {
 
 function getAlbumCover(section) {
     const cover = section.items.find((i) => i.file_type === "photo") || section.items[0];
-    return cover ? `${API_BASE_URL}/${cover.file_path}` : "";
+    return cover ? `${SERVER_URL}${cover.file_path}` : ""; // ✅ Fixed: Use SERVER_URL
 }
 
 function Modal({ children, onClose }) {

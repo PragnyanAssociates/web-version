@@ -3,10 +3,10 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.tsx";
-import { API_BASE_URL } from '../../apiConfig';
-import { MdArrowBack } from 'react-icons/md'; // +++ ADDED THIS IMPORT +++
+import { MdArrowBack } from 'react-icons/md';
+import apiClient from '../../api/client';
 
-// --- Icon Components for Header (from KitchenScreen) ---
+// --- Icon Components for Header ---
 function UserIcon() {
   return (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
@@ -47,6 +47,44 @@ function BellIcon() {
     </svg>
   );
 }
+// Add this ProfileAvatar component code after your existing icon components
+function ProfileAvatar({ className = "w-7 h-7 sm:w-9 sm:h-9" }) {
+  const { getProfileImageUrl } = useAuth()
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  
+  const hasValidImage = getProfileImageUrl() && !imageError && imageLoaded
+  
+  return (
+   <div className="relative w-7 h-7 sm:w-9 sm:h-9">
+  {/* Always render the user placeholder with dark outer ring */}
+  <div className={`absolute inset-0 rounded-full bg-gray-100 flex items-center justify-center border-2 border-slate-400 transition-opacity duration-200 ${hasValidImage ? 'opacity-0' : 'opacity-100'}`}>
+    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+      <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
+    </svg>
+  </div>
+  
+  {/* Profile image overlay with dark outer ring */}
+  {getProfileImageUrl() && (
+    <img 
+      src={getProfileImageUrl()} 
+      alt="Profile" 
+      className={`absolute inset-0 w-full h-full rounded-full border-2 border-slate-700 object-cover transition-opacity duration-200 ${hasValidImage ? 'opacity-100' : 'opacity-0'}`}
+      onError={() => {
+        setImageError(true)
+        setImageLoaded(false)
+      }}
+      onLoad={() => {
+        setImageError(false)
+        setImageLoaded(true)
+      }}
+    />
+  )}
+</div>
+
+  )
+}
+
 
 const ORDERED_DAYS = [
   { full: 'Monday', short: 'Mon' }, { full: 'Tuesday', short: 'Tue' }, { full: 'Wednesday', short: 'Wed' },
@@ -73,6 +111,7 @@ const FoodScreen = () => {
   const [menuData, setMenuData] = useState({});
   const [loading, setLoading] = useState(true);
   const [modalInfo, setModalInfo] = useState({ visible: false, mode: null, data: null });
+  const [imageError, setImageError] = useState(false)
 
   // --- Hooks for Header Functionality ---
   useEffect(() => {
@@ -82,18 +121,12 @@ const FoodScreen = () => {
         return;
       }
       try {
-        const res = await fetch(`${API_BASE_URL}/api/notifications`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-          setLocalUnreadCount(count);
-          setUnreadCount?.(count);
-        } else {
-          setUnreadCount?.(0);
-        }
-      } catch {
+        // ★★★ FIXED: Use apiClient correctly ★★★
+        const res = await apiClient.get('/notifications');
+        const count = Array.isArray(res.data) ? res.data.filter((n) => !n.is_read).length : 0;
+        setLocalUnreadCount(count);
+        setUnreadCount?.(count);
+      } catch (error) {
         setUnreadCount?.(0);
       }
     }
@@ -110,19 +143,16 @@ const FoodScreen = () => {
       }
       setLoadingProfile(true);
       try {
-        const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-        if (res.ok) {
-          setProfile(await res.json());
-        } else {
-          setProfile({
-            id: user.id,
-            username: user.username || "Unknown",
-            full_name: user.full_name || "User",
-            role: user.role || "user",
-          });
-        }
-      } catch {
-        setProfile(null);
+        // ★★★ FIXED: Use apiClient correctly ★★★
+        const res = await apiClient.get(`/profiles/${user.id}`);
+        setProfile(res.data);
+      } catch (error) {
+        setProfile({
+          id: user.id,
+          username: user.username || "Unknown",
+          full_name: user.full_name || "User",
+          role: user.role || "user",
+        });
       } finally {
         setLoadingProfile(false);
       }
@@ -133,9 +163,9 @@ const FoodScreen = () => {
   // --- Hooks for Food Menu Functionality ---
   const fetchMenu = useCallback(() => {
     setLoading(true);
-    fetch(`${API_BASE_URL}/api/food-menu`)
-      .then(res => (res.ok ? res.json() : Promise.reject('Failed to fetch')))
-      .then(data => setMenuData(data))
+    // ★★★ FIXED: Use apiClient correctly like mobile version ★★★
+    apiClient.get('/food-menu')
+      .then(res => setMenuData(res.data))
       .catch(() => alertError("Error", "Could not fetch the food menu."))
       .finally(() => setLoading(false));
   }, []);
@@ -172,10 +202,10 @@ const FoodScreen = () => {
     let body = {};
 
     if (mode === 'editFood') {
-      url = `${API_BASE_URL}/api/food-menu/${data.id}`;
+      url = `/food-menu/${data.id}`;
       body = { food_item: values.food_item, editorId: user.id };
     } else if (mode === 'editTime') {
-      url = `${API_BASE_URL}/api/food-menu/time`;
+      url = '/food-menu/time';
       body = { meal_type: data.meal_type, meal_time: values.meal_time, editorId: user.id };
     } else {
       return;
@@ -192,21 +222,16 @@ const FoodScreen = () => {
 
     closeModal();
 
-    fetch(url, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-      .then(async res => {
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.message || "An error occurred.");
+    // ★★★ FIXED: Use apiClient consistently like mobile version ★★★
+    apiClient.put(url, body)
+      .then(() => {
+        if (mode === 'editTime') {
+          fetchMenu();
         }
-        if (mode === 'editTime') fetchMenu();
       })
       .catch(error => {
-        alertError("Error", error.message);
-        setMenuData(originalData);
+        alertError("Error", error.response?.data?.message || "An error occurred.");
+        setMenuData(originalData); // Revert on error
       });
   };
 
@@ -267,14 +292,19 @@ const FoodScreen = () => {
               <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
 
               <div className="flex items-center gap-2 sm:gap-3">
-                <img
-                  src={getProfileImageUrl() || "/placeholder.svg"}
-                  alt="Profile"
-                  className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover"
-                  onError={(e) => {
-                    e.currentTarget.src = "/assets/profile.png"
-                  }}
-                />
+                 {/* <img 
+  src={imageError ? "/assets/profile.png" : (getProfileImageUrl() || "/assets/profile.png")} 
+  alt="Profile" 
+  className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover" 
+  onError={(e) => { 
+    if (!imageError) {
+      setImageError(true)
+    }
+  }}
+  onLoad={() => setImageError(false)}
+/> */}
+<ProfileAvatar />
+
                 <div className="hidden sm:flex flex-col">
                   <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">
                     {profile?.full_name || profile?.username || "User"}
@@ -309,20 +339,19 @@ const FoodScreen = () => {
       </header>
 
       <main className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-6 sm:py-8">
-        {/* +++ ADDED THIS BACK BUTTON +++ */}
         <div className="mb-6">
-            <button
-                onClick={() => navigate(getDefaultDashboardRoute())}
-                className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors"
-                title="Back to Dashboard"
-            >
-                <MdArrowBack />
-                <span>Back to Dashboard</span>
-            </button>
+          <button
+            onClick={() => navigate(getDefaultDashboardRoute())}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors"
+            title="Back to Dashboard"
+          >
+            <MdArrowBack />
+            <span>Back to Dashboard</span>
+          </button>
         </div>
         {loading || loadingProfile ? (
           <div className="flex justify-center items-center py-20">
-              <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
           </div>
         ) : (
           <FoodMenuTable
@@ -345,7 +374,7 @@ const FoodScreen = () => {
   );
 };
 
-// -------- TABLE COMPONENT -----------
+// -------- TABLE COMPONENT (unchanged) -----------
 const FoodMenuTable = ({ menuData, isAdmin, onEditFood, onEditTime }) => {
   const getMealForCell = (day, mealType) => menuData[day]?.find(m => m.meal_type === mealType);
   const getHeaderTime = (mealType) => menuData['Monday']?.find(m => m.meal_type === mealType)?.meal_time || '';
@@ -443,7 +472,7 @@ const FoodMenuTable = ({ menuData, isAdmin, onEditFood, onEditTime }) => {
   );
 };
 
-// ---------- MODAL COMPONENT ------------
+// ---------- MODAL COMPONENT (unchanged) ------------
 const EditMenuModal = ({ modalInfo, onClose, onSave }) => {
   const { mode, data } = modalInfo;
   const [foodItem, setFoodItem] = useState('');

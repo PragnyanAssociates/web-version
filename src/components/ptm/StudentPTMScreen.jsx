@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from '../../apiConfig';
+// ★★★ 1. IMPORT apiClient AND REMOVE API_BASE_URL ★★★
+import apiClient from '../../api/client';
 import { useAuth } from '../../context/AuthContext.tsx';
 import { 
     MdPersonOutline,
@@ -84,15 +85,12 @@ const StudentPTMScreen = () => {
     async function fetchUnreadNotifications() {
         if (!token) { setUnreadCount?.(0); return; }
         try {
-            const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-            if (res.ok) {
-                const data = await res.json();
-                const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                setLocalUnreadCount(count);
-                setUnreadCount?.(count);
-            } else {
-                setUnreadCount?.(0);
-            }
+            // ★★★ 2. USE apiClient FOR NOTIFICATIONS ★★★
+            const response = await apiClient.get('/notifications');
+            const data = response.data;
+            const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+            setLocalUnreadCount(count);
+            setUnreadCount?.(count);
         } catch {
             setUnreadCount?.(0);
         }
@@ -107,19 +105,16 @@ const StudentPTMScreen = () => {
           if (!user?.id) { setLoadingProfile(false); return; }
           setLoadingProfile(true);
           try {
-              const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-              if (res.ok) {
-                  setProfile(await res.json());
-              } else {
-                  setProfile({
-                      id: user.id,
-                      username: user.username || "Unknown",
-                      full_name: user.full_name || "User",
-                      role: user.role || "user",
-                  });
-              }
+              // ★★★ 3. USE apiClient FOR PROFILE ★★★
+              const response = await apiClient.get(`/profiles/${user.id}`);
+              setProfile(response.data);
           } catch {
-              setProfile(null);
+              setProfile({
+                  id: user.id,
+                  username: user.username || "Unknown",
+                  full_name: user.full_name || "User",
+                  role: user.role || "user",
+              });
           } finally {
               setLoadingProfile(false);
           }
@@ -146,24 +141,24 @@ const StudentPTMScreen = () => {
   const fetchMeetings = useCallback(async () => {
     try {
       setError(null);
-      const [meetingsRes, teachersRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/ptm`),
-        fetch(`${API_BASE_URL}/api/ptm/teachers`)
-      ]);
-      if (!meetingsRes.ok) {
-        const errData = await meetingsRes.json();
-        throw new Error(errData.message || 'Could not fetch meeting schedules.');
-      }
-      if (!teachersRes.ok) {
-        throw new Error('Could not fetch teacher data.');
-      }
-      const meetingsData = await meetingsRes.json();
-      const teachersData = await teachersRes.json();
+      // ★★★ 4. USE apiClient - SIMPLIFIED TO MATCH MOBILE VERSION ★★★
+      const response = await apiClient.get('/ptm');
+      const meetingsData = response.data;
       meetingsData.sort((a, b) => new Date(b.meeting_datetime) - new Date(a.meeting_datetime));
       setMeetings(meetingsData);
-      setTeachers(teachersData);
-    } catch (err) {
-      setError(err.message);
+      
+      // ★★★ 5. OPTIONAL: FETCH TEACHERS IF NEEDED FOR WEB VERSION ★★★
+      try {
+        const teachersResponse = await apiClient.get('/ptm/teachers');
+        setTeachers(teachersResponse.data);
+      } catch (teacherError) {
+        // Teachers data is optional for display, continue without it
+        console.warn('Could not fetch teacher data:', teacherError);
+        setTeachers([]);
+      }
+    } catch (error) {
+      // ★★★ 6. MATCH MOBILE ERROR HANDLING ★★★
+      setError(error.response?.data?.message || 'Could not fetch meeting schedules.');
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -183,6 +178,7 @@ const StudentPTMScreen = () => {
     if (link) {
       window.open(link, '_blank', 'noopener,noreferrer');
     } else {
+      // ★★★ 7. MATCH MOBILE ALERT STYLE ★★★
       alert('Error: Meeting link is not available.');
     }
   };

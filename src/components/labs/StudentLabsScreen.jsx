@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from "../../apiConfig";
+// ★★★ 1. IMPORT apiClient AND SERVER_URL, REMOVE API_BASE_URL ★★★
+import apiClient from '../../api/client';
+import { SERVER_URL } from '../../apiConfig';
 import { useAuth } from "../../context/AuthContext.tsx";
-import { MdOutlineLaunch, MdCloudDownload, MdArrowBack } from "react-icons/md"; // +++ ADDED MdArrowBack +++
+import { MdOutlineLaunch, MdCloudDownload, MdArrowBack } from "react-icons/md";
 
 // --- Icon Components for Header ---
 function UserIcon() {
@@ -53,6 +55,42 @@ function DigitalLabIcon() {
         </svg>
     );
 }
+function ProfileAvatar() {
+  const { getProfileImageUrl } = useAuth()
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  
+  const hasValidImage = getProfileImageUrl() && !imageError && imageLoaded
+  
+  return (
+    <div className="relative w-7 h-7 sm:w-9 sm:h-9">
+      {/* Always render the user placeholder */}
+      <div className={`absolute inset-0 rounded-full bg-gray-100 flex items-center justify-center border-2 border-slate-400 transition-opacity duration-200 ${hasValidImage ? 'opacity-0' : 'opacity-100'}`}>
+        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
+        </svg>
+      </div>
+      
+      {/* Profile image overlay */}
+      {getProfileImageUrl() && (
+        <img 
+          src={getProfileImageUrl()} 
+          alt="Profile" 
+          className={`absolute inset-0 w-full h-full rounded-full border border-slate-200 object-cover transition-opacity duration-200 ${hasValidImage ? 'opacity-100' : 'opacity-0'}`}
+          onError={() => {
+            setImageError(true)
+            setImageLoaded(false)
+          }}
+          onLoad={() => {
+            setImageError(false)
+            setImageLoaded(true)
+          }}
+        />
+      )}
+    </div>
+  )
+} 
+
 
 export default function StudentLabsScreen() {
     const navigate = useNavigate();
@@ -63,15 +101,24 @@ export default function StudentLabsScreen() {
     const [headerQuery, setHeaderQuery] = useState("");
     const [labs, setLabs] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    // ★★★ 2. ADD ERROR STATE TO MATCH MOBILE VERSION ★★★
+    const [error, setError] = useState(null);
 
     useEffect(() => {
         async function fetchProfile() {
             if (!user?.id) return;
             try {
-                const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-                if (res.ok) setProfile(await res.json());
-                else setProfile({ id: user.id, username: user.username || "Unknown", full_name: user.full_name || "User", role: user.role || "user" });
-            } catch { setProfile(null); }
+                // ★★★ 3. USE apiClient FOR PROFILE ★★★
+                const response = await apiClient.get(`/profiles/${user.id}`);
+                setProfile(response.data);
+            } catch {
+                setProfile({ 
+                    id: user.id, 
+                    username: user.username || "Unknown", 
+                    full_name: user.full_name || "User", 
+                    role: user.role || "user" 
+                });
+            }
         }
         fetchProfile();
     }, [user]);
@@ -80,14 +127,15 @@ export default function StudentLabsScreen() {
         async function fetchUnreadNotifications() {
             if (!token) { setUnreadCount?.(0); return; }
             try {
-                const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res.ok) {
-                    const data = await res.json();
-                    const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                    setLocalUnreadCount(count);
-                    setUnreadCount?.(count);
-                } else { setUnreadCount?.(0); }
-            } catch { setUnreadCount?.(0); }
+                // ★★★ 4. USE apiClient FOR NOTIFICATIONS ★★★
+                const response = await apiClient.get('/notifications');
+                const data = response.data;
+                const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+                setLocalUnreadCount(count);
+                setUnreadCount?.(count);
+            } catch { 
+                setUnreadCount?.(0); 
+            }
         }
         fetchUnreadNotifications();
         const id = setInterval(fetchUnreadNotifications, 60000);
@@ -112,12 +160,14 @@ export default function StudentLabsScreen() {
     const fetchLabs = useCallback(async () => {
         setIsLoading(true);
         try {
-            const response = await fetch(`${API_BASE_URL}/api/labs`);
-            if (!response.ok) throw new Error("Failed to fetch labs");
-            const allLabs = await response.json();
-            setLabs(allLabs);
+            // ★★★ 5. MATCH MOBILE VERSION ERROR HANDLING ★★★
+            setError(null);
+            // ★★★ 6. USE apiClient FOR LABS - MATCHES MOBILE VERSION ★★★
+            const response = await apiClient.get('/labs');
+            setLabs(response.data);
         } catch (e) {
-            alert(e.message);
+            // ★★★ 7. MATCH MOBILE ERROR HANDLING PATTERN ★★★
+            setError(e.response?.data?.message || 'Failed to fetch Digital Labs.');
         } finally {
             setIsLoading(false);
         }
@@ -142,6 +192,27 @@ export default function StudentLabsScreen() {
                         <div className="absolute inset-0 h-10 w-10 border-3 border-transparent rounded-full border-r-indigo-400 animate-pulse"></div>
                     </div>
                     <p className="text-gray-600 font-medium text-sm">Loading digital labs...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // ★★★ 8. ADD ERROR STATE HANDLING TO MATCH MOBILE VERSION ★★★
+    if (error) {
+        return (
+            <div className="bg-slate-100 min-h-screen relative flex items-center justify-center">
+                <div className="flex flex-col items-center justify-center">
+                    <div className="w-16 h-16 bg-gradient-to-r from-red-100 to-red-200 rounded-full flex items-center justify-center mx-auto mb-5">
+                        <DigitalLabIcon />
+                    </div>
+                    <h3 className="text-xl font-bold text-red-700 mb-3">Error Loading Labs</h3>
+                    <p className="text-red-600 mb-6 text-base text-center">{error}</p>
+                    <button 
+                        onClick={fetchLabs}
+                        className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-lg transition-all"
+                    >
+                        Try Again
+                    </button>
                 </div>
             </div>
         );
@@ -178,7 +249,8 @@ export default function StudentLabsScreen() {
                             </div>
                             <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
                             <div className="flex items-center gap-2 sm:gap-3">
-                                <img src={getProfileImageUrl() || "/placeholder.svg"} alt="Profile" className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover" onError={(e) => { e.currentTarget.src = "/assets/profile.png" }} />
+                             
+<ProfileAvatar />
                                 <div className="hidden sm:flex flex-col">
                                     <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">{profile?.full_name || profile?.username || "User"}</span>
                                     <span className="text-xs text-slate-600 capitalize">{profile?.role || ""}</span>
@@ -198,7 +270,6 @@ export default function StudentLabsScreen() {
             </header>
 
             <main className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-6 sm:py-8">
-                {/* +++ UPDATED THIS BUTTON +++ */}
                 <div className="mb-6">
                     <button onClick={() => navigate(getDefaultDashboardRoute())} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors">
                         <MdArrowBack />
@@ -218,7 +289,8 @@ export default function StudentLabsScreen() {
                     <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {filteredLabs.map((lab, index) => (
                             <li key={lab.id} className="bg-slate-50 rounded-lg shadow-sm border border-slate-200 p-4 transition-shadow hover:shadow-md flex flex-col h-full" style={{ animation: `fadeInUp 0.6s ease-out ${index * 0.1}s both` }}>
-                                <img src={lab.cover_image_url ? `${API_BASE_URL}${lab.cover_image_url}` : "/assets/lab-placeholder.png"} alt={lab.title} className="w-full h-40 rounded-md object-cover flex-shrink-0 bg-slate-200 mb-4" onError={(e) => { e.currentTarget.src = "/assets/lab-placeholder.png"; }} />
+                                {/* ★★★ 9. USE SERVER_URL FOR IMAGES - MATCHES MOBILE PATTERN ★★★ */}
+                                <img src={lab.cover_image_url ? `${SERVER_URL}${lab.cover_image_url}` : "/assets/lab-placeholder.png"} alt={lab.title} className="w-full h-40 rounded-md object-cover flex-shrink-0 bg-slate-200 mb-4" onError={(e) => { e.currentTarget.src = "/assets/lab-placeholder.png"; }} />
                                 <div className="flex flex-col flex-grow">
                                     <div className="flex-grow">
                                         <span className="inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded-full mb-2">{lab.lab_type || "General"}</span>
@@ -241,7 +313,8 @@ export default function StudentLabsScreen() {
                                         )}
                                         {lab.file_path && (
                                             <a 
-                                                href={`${API_BASE_URL}${lab.file_path}`} 
+                                                /* ★★★ 10. USE SERVER_URL FOR FILE DOWNLOADS - MATCHES MOBILE PATTERN ★★★ */
+                                                href={`${SERVER_URL}${lab.file_path}`} 
                                                 download
                                                 className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-lg transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-sm"
                                             >
@@ -266,4 +339,4 @@ export default function StudentLabsScreen() {
             </main>
         </div>
     );
-};
+}

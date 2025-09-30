@@ -2,12 +2,12 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from '../../apiConfig';
 import { useAuth } from '../../context/AuthContext.tsx';
 import { MdArrowBack, MdVisibility, MdEdit, MdDelete, MdAdd, MdClose, MdOutlineConfirmationNumber, MdOutlineCalendarToday, MdOutlinePerson } from "react-icons/md";
 import { FaArrowLeft, FaPaperPlane, FaCogs, FaCheckDouble, FaLock, FaUserShield } from "react-icons/fa";
 import { FiClock } from "react-icons/fi";
-
+// ★★★ FIX 1: Import apiClient instead of using fetch ★★★
+import apiClient from '../../api/client';
 
 // --- Icon Components for Header ---
 function UserIcon() {
@@ -90,18 +90,13 @@ const AdminHelpDeskScreen = () => {
             return;
         }
         try {
-            const res = await fetch(`${API_BASE_URL}/api/notifications`, {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-            if (res.ok) {
-                const data = await res.json();
-                const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                setLocalUnreadCount(count);
-                setUnreadCount?.(count);
-            } else {
-                setUnreadCount?.(0);
-            }
-        } catch {
+            // ★★★ FIX 2: Use apiClient for notifications ★★★
+            const response = await apiClient.get('/notifications');
+            const data = response.data;
+            const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+            setLocalUnreadCount(count);
+            setUnreadCount?.(count);
+        } catch (error) {
             setUnreadCount?.(0);
         }
     }
@@ -118,19 +113,16 @@ const AdminHelpDeskScreen = () => {
         }
         setLoadingProfile(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-            if (res.ok) {
-                setProfile(await res.json());
-            } else {
-                setProfile({
-                    id: user.id,
-                    username: user.username || "Unknown",
-                    full_name: user.full_name || "User",
-                    role: user.role || "user",
-                });
-            }
-        } catch {
-            setProfile(null);
+            // ★★★ FIX 3: Use apiClient for profile ★★★
+            const response = await apiClient.get(`/profiles/${user.id}`);
+            setProfile(response.data);
+        } catch (error) {
+            setProfile({
+                id: user.id,
+                username: user.username || "Unknown",
+                full_name: user.full_name || "User",
+                role: user.role || "user",
+            });
         } finally {
             setLoadingProfile(false);
         }
@@ -304,10 +296,13 @@ const TicketListView = ({ onSelect }) => {
 
   const fetchData = useCallback(() => {
     setLoading(true);
-    const url = `${API_BASE_URL}/api/helpdesk/all-tickets?status=${filter}`;
-    fetch(url)
-      .then((res) => res.json())
-      .then(setTickets)
+    // ★★★ FIX 4: Use apiClient and remove /api/ prefix ★★★
+    apiClient.get(`/helpdesk/all-tickets?status=${filter}`)
+      .then(res => setTickets(res.data))
+      .catch(err => {
+        console.error("Error fetching tickets:", err);
+        alert(err.response?.data?.message || "Could not load tickets.");
+      })
       .finally(() => setLoading(false));
   }, [filter]);
 
@@ -391,9 +386,13 @@ export const TicketDetailsView = ({ ticketId, onBack, isAdmin }) => {
   
     const fetchDetails = useCallback(() => {
       setLoading(true);
-      fetch(`${API_BASE_URL}/api/helpdesk/ticket/${ticketId}`)
-        .then((res) => res.json())
-        .then(setDetails)
+      // ★★★ FIX 5: Use apiClient and remove /api/ prefix ★★★
+      apiClient.get(`/helpdesk/ticket/${ticketId}`)
+        .then(res => setDetails(res.data))
+        .catch(err => {
+          console.error("Error fetching ticket details:", err);
+          alert(err.response?.data?.message || "Could not load ticket details.");
+        })
         .finally(() => setLoading(false));
     }, [ticketId]);
   
@@ -402,28 +401,33 @@ export const TicketDetailsView = ({ ticketId, onBack, isAdmin }) => {
     const handlePostReply = async () => {
       if (!replyText.trim()) return;
       try {
-        await fetch(`${API_BASE_URL}/api/helpdesk/reply`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ticketId, userId: user.id, replyText }),
+        // ★★★ FIX 6: Use apiClient for reply ★★★
+        await apiClient.post('/helpdesk/reply', { 
+          ticketId, 
+          userId: user.id, 
+          replyText 
         });
         setReplyText("");
         fetchDetails();
       } catch (e) {
-        alert("Could not post reply.");
+        console.error("Error posting reply:", e);
+        alert(e.response?.data?.message || "Could not post reply.");
       }
     };
   
     const handleStatusChange = async (newStatus) => {
       try {
-        await fetch(`${API_BASE_URL}/api/helpdesk/ticket/status`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ticketId, status: newStatus, adminId: user.id, adminName: user.full_name }),
+        // ★★★ FIX 7: Use apiClient for status change ★★★
+        await apiClient.put('/helpdesk/ticket/status', { 
+          ticketId, 
+          status: newStatus, 
+          adminId: user.id, 
+          adminName: user.full_name 
         });
         fetchDetails();
       } catch (e) {
-        alert("Could not update status.");
+        console.error("Error updating status:", e);
+        alert(e.response?.data?.message || "Could not update status.");
       }
     };
 
@@ -593,9 +597,13 @@ export const HistoryView = ({ onViewDetails, onBack }) => {
     const fetchTickets = useCallback(() => {
       if (!user) return;
       setLoading(true);
-      fetch(`${API_BASE_URL}/api/helpdesk/my-tickets/${user.id}`)
-        .then((res) => res.json())
-        .then(setTickets)
+      // ★★★ FIX 8: Use apiClient for history ★★★
+      apiClient.get(`/helpdesk/my-tickets/${user.id}`)
+        .then(res => setTickets(res.data))
+        .catch(err => {
+          console.error("Error fetching ticket history:", err);
+          alert(err.response?.data?.message || "Could not load ticket history.");
+        })
         .finally(() => setLoading(false));
     }, [user]);
   

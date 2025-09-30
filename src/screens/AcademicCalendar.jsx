@@ -3,10 +3,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from "react-router-dom";
 import { useAuth } from '../context/AuthContext.tsx';
-import { API_BASE_URL } from '../apiConfig';
 import { MdAccountCircle, MdCancel, MdCheckCircle, MdArrowBack } from 'react-icons/md';
+import apiClient from '../api/client.js';
 
-// --- Icon Components for Header ---
+// --- Icon Components for Header --- (unchanged)
 function UserIcon() {
     return (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
@@ -47,8 +47,44 @@ function BellIcon() {
         </svg>
     );
 }
+function ProfileAvatar() {
+  const { getProfileImageUrl } = useAuth()
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  
+  const hasValidImage = getProfileImageUrl() && !imageError && imageLoaded
+  
+  return (
+    <div className="relative w-7 h-7 sm:w-9 sm:h-9">
+      {/* Always render the user placeholder */}
+      <div className={`absolute inset-0 rounded-full bg-gray-100 flex items-center justify-center border-2 border-slate-400 transition-opacity duration-200 ${hasValidImage ? 'opacity-0' : 'opacity-100'}`}>
+        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
+        </svg>
+      </div>
+      
+      {/* Profile image overlay */}
+      {getProfileImageUrl() && (
+        <img 
+          src={getProfileImageUrl()} 
+          alt="Profile" 
+          className={`absolute inset-0 w-full h-full rounded-full border border-slate-200 object-cover transition-opacity duration-200 ${hasValidImage ? 'opacity-100' : 'opacity-0'}`}
+          onError={() => {
+            setImageError(true)
+            setImageLoaded(false)
+          }}
+          onLoad={() => {
+            setImageError(false)
+            setImageLoaded(true)
+          }}
+        />
+      )}
+    </div>
+  )
+} 
 
-// --- Configuration ---
+
+// --- Configuration --- (unchanged)
 const eventTypesConfig = {
     Meeting: { color: '#0077b6', displayName: 'Meeting' },
     Event: { color: '#ff9f1c', displayName: 'Event' },
@@ -88,26 +124,36 @@ export default function AcademicCalendar() {
         async function fetchProfile() {
             if (!user?.id) return;
             try {
-                const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-                if (res.ok) setProfile(await res.json());
-                else setProfile({ id: user.id, username: user.username || "Unknown", full_name: user.full_name || "User", role: user.role || "user" });
-            } catch { setProfile(null); }
+                // ★★★ FIXED: Use apiClient correctly ★★★
+                const res = await apiClient.get(`/profiles/${user.id}`);
+                setProfile(res.data);
+            } catch (error) {
+                setProfile({ 
+                    id: user.id, 
+                    username: user.username || "Unknown", 
+                    full_name: user.full_name || "User", 
+                    role: user.role || "user" 
+                });
+            }
         }
         fetchProfile();
     }, [user]);
 
     useEffect(() => {
         async function fetchUnreadNotifications() {
-            if (!token) { setUnreadCount?.(0); return; }
+            if (!token) { 
+                setUnreadCount?.(0); 
+                return; 
+            }
             try {
-                const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res.ok) {
-                    const data = await res.json();
-                    const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                    setLocalUnreadCount(count);
-                    setUnreadCount?.(count);
-                } else { setUnreadCount?.(0); }
-            } catch { setUnreadCount?.(0); }
+                // ★★★ FIXED: Use apiClient correctly ★★★
+                const res = await apiClient.get('/notifications');
+                const count = Array.isArray(res.data) ? res.data.filter((n) => !n.is_read).length : 0;
+                setLocalUnreadCount(count);
+                setUnreadCount?.(count);
+            } catch (error) {
+                setUnreadCount?.(0);
+            }
         }
         fetchUnreadNotifications();
         const id = setInterval(fetchUnreadNotifications, 60000);
@@ -121,7 +167,7 @@ export default function AcademicCalendar() {
         }
     };
 
-    // --- Component State and Logic (Unchanged) ---
+    // --- Component State and Logic ---
     const [isLoading, setIsLoading] = useState(true);
     const [events, setEvents] = useState({});
     const [currentDisplayDate, setCurrentDisplayDate] = useState(new Date());
@@ -139,12 +185,11 @@ export default function AcademicCalendar() {
     const fetchEvents = async () => {
         try {
             if (!isLoading) setIsLoading(true);
-            const response = await fetch(`${API_BASE_URL}/api/calendar`);
-            if (!response.ok) throw new Error('Failed to fetch calendar data.');
-            const data = await response.json();
-            setEvents(data);
+            // ★★★ FIXED: Use apiClient correctly ★★★
+            const response = await apiClient.get('/calendar');
+            setEvents(response.data);
         } catch (error) {
-            window.alert(error.message || 'Failed to fetch calendar data.');
+            window.alert(error.response?.data?.message || 'Failed to fetch calendar data.');
         } finally {
             setIsLoading(false);
         }
@@ -152,7 +197,6 @@ export default function AcademicCalendar() {
 
     useEffect(() => {
         fetchEvents();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     
     const calendarGrid = useMemo(() => {
@@ -197,39 +241,37 @@ export default function AcademicCalendar() {
             window.alert('Title is required.');
             return;
         }
+
         const isEditing = !!editingEvent;
-        const url = isEditing
-            ? `${API_BASE_URL}/api/calendar/${editingEvent.id}`
-            : `${API_BASE_URL}/api/calendar`;
-        const method = isEditing ? 'PUT' : 'POST';
-        const body = { ...eventDetails, event_date: selectedDate, adminId: user?.id };
+        const url = isEditing ? `/calendar/${editingEvent.id}` : '/calendar';
+        const method = isEditing ? 'put' : 'post';
+        const body = { 
+            ...eventDetails, 
+            event_date: selectedDate, 
+            adminId: user?.id 
+        };
 
         try {
-            const response = await fetch(url, {
-                method,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.message || 'Failed to save event.');
-
-            window.alert(result.message || `Event ${isEditing ? 'updated' : 'created'} successfully!`);
+            // ★★★ FIXED: Use apiClient consistently like mobile version ★★★
+            const response = await apiClient[method](url, body);
+            window.alert(response.data.message || `Event ${isEditing ? 'updated' : 'created'} successfully!`);
             setIsModalVisible(false);
             await fetchEvents();
         } catch (error) {
-            window.alert(error.message || 'Failed to save event.');
+            window.alert(error.response?.data?.message || 'Failed to save event.');
         }
     };
 
     const handleDeleteEvent = async (eventId) => {
         const ok = window.confirm('Are you sure you want to delete this event?');
         if (!ok) return;
+        
         try {
-            const response = await fetch(`${API_BASE_URL}/api/calendar/${eventId}`, { method: 'DELETE' });
-            if (!response.ok) throw new Error('Failed to delete event.');
+            // ★★★ FIXED: Use apiClient consistently like mobile version ★★★
+            await apiClient.delete(`/calendar/${eventId}`);
             await fetchEvents();
         } catch (error) {
-            window.alert(error.message || 'Failed to delete event.');
+            window.alert(error.response?.data?.message || 'Failed to delete event.');
         }
     };
 
@@ -269,7 +311,7 @@ export default function AcademicCalendar() {
 
     return (
         <div className="min-h-screen bg-slate-100">
-            {/* --- HEADER (Unchanged) --- */}
+            {/* --- HEADER (unchanged) --- */}
             <header className="border-b border-slate-200 bg-slate-100 sticky top-0 z-40">
                 <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-3">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
@@ -279,7 +321,14 @@ export default function AcademicCalendar() {
                         </div>
                         <div className="flex items-center flex-wrap justify-end gap-2 sm:gap-3">
                             <div className="relative">
-                                <input id="module-search" type="text" value={headerQuery} onChange={(e) => setHeaderQuery(e.target.value)} placeholder="Search events..." className="w-full sm:w-44 lg:w-64 rounded-md border border-slate-200 bg-slate-50 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                                <input 
+                                    id="module-search" 
+                                    type="text" 
+                                    value={headerQuery} 
+                                    onChange={(e) => setHeaderQuery(e.target.value)} 
+                                    placeholder="Search events..." 
+                                    className="w-full sm:w-44 lg:w-64 rounded-md border border-slate-200 bg-slate-50 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                />
                             </div>
                             <div className="inline-flex items-stretch rounded-lg border border-slate-200 bg-slate-50 overflow-hidden">
                                 <button onClick={() => navigate(getDefaultDashboardRoute())} className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-200 transition" type="button" title="Home">
@@ -299,18 +348,33 @@ export default function AcademicCalendar() {
                             </div>
                             <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
                             <div className="flex items-center gap-2 sm:gap-3">
-                                <img src={getProfileImageUrl() || "/placeholder.svg"} alt="Profile" className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover" onError={(e) => { e.currentTarget.src = "/assets/profile.png" }} />
+                              <ProfileAvatar />
                                 <div className="hidden sm:flex flex-col">
-                                    <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">{profile?.full_name || profile?.username || "User"}</span>
+                                    <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">
+                                        {profile?.full_name || profile?.username || "User"}
+                                    </span>
                                     <span className="text-xs text-slate-600 capitalize">{profile?.role || ""}</span>
                                 </div>
-                                <button onClick={handleLogout} className="inline-flex items-center rounded-md bg-blue-600 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                                <button 
+                                    onClick={handleLogout} 
+                                    className="inline-flex items-center rounded-md bg-blue-600 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                                >
                                     <span className="hidden sm:inline">Logout</span>
                                     <span className="sm:hidden">Exit</span>
                                 </button>
-                                <button onClick={() => navigate("/NotificationsScreen")} className="relative inline-flex items-center justify-center rounded-full border border-slate-200 bg-slate-50 p-1.5 sm:p-2 text-slate-700 hover:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="Notifications" title="Notifications" type="button">
+                                <button 
+                                    onClick={() => navigate("/NotificationsScreen")} 
+                                    className="relative inline-flex items-center justify-center rounded-full border border-slate-200 bg-slate-50 p-1.5 sm:p-2 text-slate-700 hover:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" 
+                                    aria-label="Notifications" 
+                                    title="Notifications" 
+                                    type="button"
+                                >
                                     <BellIcon />
-                                    {unreadCount > 0 && (<span className="absolute -top-0.5 sm:-top-1 -right-0.5 sm:-right-1 px-1 sm:px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-white bg-red-600 rounded-full min-w-[16px] sm:min-w-[18px]">{unreadCount > 99 ? "99+" : unreadCount}</span>)}
+                                    {unreadCount > 0 && (
+                                        <span className="absolute -top-0.5 sm:-top-1 -right-0.5 sm:-right-1 px-1 sm:px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-white bg-red-600 rounded-full min-w-[16px] sm:min-w-[18px]">
+                                            {unreadCount > 99 ? "99+" : unreadCount}
+                                        </span>
+                                    )}
                                 </button>
                             </div>
                         </div>
@@ -318,9 +382,8 @@ export default function AcademicCalendar() {
                 </div>
             </header>
 
-            {/* --- UPDATED CALENDAR --- */}
+            {/* --- CALENDAR CONTENT (rest remains unchanged) --- */}
             <main className="w-full max-w-screen-xl mx-auto p-4 sm:p-6 lg:p-8">
-                {/* +++ ADDED THIS BACK BUTTON +++ */}
                 <div className="mb-6">
                     <button
                         onClick={() => navigate(getDefaultDashboardRoute())}
@@ -335,7 +398,6 @@ export default function AcademicCalendar() {
                     
                     {/* Left Column: Event List & Legend */}
                     <div className="lg:col-span-1 xl:col-span-1 space-y-8">
-                        {/* +++ UPDATED THIS CARD COLOR +++ */}
                         <div className="bg-slate-50 rounded-2xl shadow-lg border border-slate-200/80">
                             <div className="p-4 border-b border-slate-200">
                                 <h2 className="text-lg font-bold text-slate-800">Events for {monthNames[month]}</h2>
@@ -370,7 +432,6 @@ export default function AcademicCalendar() {
                                 )}
                             </div>
                         </div>
-                        {/* +++ UPDATED THIS CARD COLOR +++ */}
                         <div className="bg-slate-50 rounded-2xl shadow-lg border border-slate-200/80 p-4">
                             <h3 className="text-md font-bold text-slate-700 mb-3">Legend</h3>
                             <div className="grid grid-cols-2 gap-x-4 gap-y-2">
@@ -385,7 +446,6 @@ export default function AcademicCalendar() {
                     </div>
 
                     {/* Right Column: Calendar Grid */}
-                    {/* +++ UPDATED THIS CARD COLOR +++ */}
                     <div className="lg:col-span-2 xl:col-span-3 bg-slate-50 rounded-2xl shadow-lg border border-slate-200/80 p-4 sm:p-6">
                         <div className="flex items-center justify-between mb-4 select-none">
                             <button onClick={() => changeMonth(-1)} type="button" aria-label="Previous month" className="p-2 rounded-full text-slate-500 hover:bg-slate-100 transition-colors">
@@ -410,9 +470,12 @@ export default function AcademicCalendar() {
                                 
                                 return (
                                     <button
-                                        key={dateKey} type="button"
+                                        key={dateKey} 
+                                        type="button"
                                         className={`relative group flex flex-col p-2 h-24 sm:h-28 text-left border-r border-b border-slate-200 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 z-0 ${isAdmin ? 'hover:bg-blue-100/50 cursor-pointer' : ''}`}
-                                        onClick={isAdmin ? () => openModalForNew(dateKey) : undefined} disabled={!isAdmin} >
+                                        onClick={isAdmin ? () => openModalForNew(dateKey) : undefined} 
+                                        disabled={!isAdmin} 
+                                    >
                                         <span className={`relative flex items-center justify-center text-sm font-semibold h-7 w-7 rounded-full ${isToday ? 'bg-blue-600 text-white' : 'text-slate-700'}`}>
                                             {day}
                                         </span>
@@ -426,8 +489,12 @@ export default function AcademicCalendar() {
                                                 ))}
                                             </div>
                                         </div>
-                                        {dayItems.length > 2 && (<div className="text-xs text-slate-400 font-semibold mt-auto">+{dayItems.length - 2} more</div>)}
-                                        {isAdmin && (<div className="absolute top-1 right-1 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-lg font-bold">+</div>)}
+                                        {dayItems.length > 2 && (
+                                            <div className="text-xs text-slate-400 font-semibold mt-auto">+{dayItems.length - 2} more</div>
+                                        )}
+                                        {isAdmin && (
+                                            <div className="absolute top-1 right-1 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-lg font-bold">+</div>
+                                        )}
                                     </button>
                                 );
                             })}
@@ -439,7 +506,6 @@ export default function AcademicCalendar() {
                     <>
                         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40" onClick={() => setIsModalVisible(false)} />
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                            {/* +++ UPDATED THIS CARD COLOR +++ */}
                             <div className="bg-slate-50 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
                                 <div className="p-6">
                                     <h2 className="text-2xl font-bold text-slate-800 mb-2">{editingEvent ? 'Edit Event' : 'Add New Event'}</h2>
@@ -449,28 +515,79 @@ export default function AcademicCalendar() {
                                     <div className="space-y-4">
                                         <div>
                                             <label className="text-sm font-semibold text-slate-600 mb-1 block">Type</label>
-                                            <select value={eventDetails.type} onChange={e => setEventDetails(p => ({ ...p, type: e.target.value }))} className="w-full p-3 bg-slate-100 border border-slate-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20">
-                                                {Object.entries(eventTypesConfig).map(([key, { displayName }]) => ( <option key={key} value={key}>{displayName}</option>))}
+                                            <select 
+                                                value={eventDetails.type} 
+                                                onChange={e => setEventDetails(p => ({ ...p, type: e.target.value }))} 
+                                                className="w-full p-3 bg-slate-100 border border-slate-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                                            >
+                                                {Object.entries(eventTypesConfig).map(([key, { displayName }]) => (
+                                                    <option key={key} value={key}>{displayName}</option>
+                                                ))}
                                             </select>
                                         </div>
                                         <div>
                                             <label className="text-sm font-semibold text-slate-600 mb-1 block">Title</label>
-                                            <input type="text" value={eventDetails.name} onChange={e => setEventDetails({ ...eventDetails, name: e.target.value })} className="w-full p-3 bg-slate-100 border border-slate-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" placeholder="Event Title" />
+                                            <input 
+                                                type="text" 
+                                                value={eventDetails.name} 
+                                                onChange={e => setEventDetails({ ...eventDetails, name: e.target.value })} 
+                                                className="w-full p-3 bg-slate-100 border border-slate-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" 
+                                                placeholder="Event Title" 
+                                            />
                                         </div>
                                         <div>
                                             <label className="text-sm font-semibold text-slate-600 mb-1 block">Time (Optional)</label>
-                                            <input type="text" value={eventDetails.time} onChange={e => setEventDetails({ ...eventDetails, time: e.target.value })} className="w-full p-3 bg-slate-100 border border-slate-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" placeholder="e.g., 10:00 AM" />
+                                            <input 
+                                                type="text" 
+                                                value={eventDetails.time} 
+                                                onChange={e => setEventDetails({ ...eventDetails, time: e.target.value })} 
+                                                className="w-full p-3 bg-slate-100 border border-slate-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" 
+                                                placeholder="e.g., 10:00 AM" 
+                                            />
                                         </div>
                                         <div>
                                             <label className="text-sm font-semibold text-slate-600 mb-1 block">Description (Optional)</label>
-                                            <textarea value={eventDetails.description} onChange={e => setEventDetails({ ...eventDetails, description: e.target.value })} className="w-full p-3 bg-slate-100 border border-slate-300 rounded-lg resize-y" rows={3} placeholder="Details..."/>
+                                            <textarea 
+                                                value={eventDetails.description} 
+                                                onChange={e => setEventDetails({ ...eventDetails, description: e.target.value })} 
+                                                className="w-full p-3 bg-slate-100 border border-slate-300 rounded-lg resize-y" 
+                                                rows={3} 
+                                                placeholder="Details..."
+                                            />
                                         </div>
                                     </div>
                                     <div className="flex gap-4 justify-end mt-6 pt-4 border-t border-slate-200">
-                                        <button onClick={() => setIsModalVisible(false)} type="button" className="px-5 py-2.5 bg-slate-200 text-slate-700 font-semibold rounded-lg hover:bg-slate-300 transition-colors">Cancel</button>
-                                        <button onClick={handleSaveEvent} type="button" className="px-5 py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">{editingEvent ? 'Save Changes' : 'Add Event'}</button>
+                                        <button 
+                                            onClick={() => setIsModalVisible(false)} 
+                                            type="button" 
+                                            className="px-5 py-2.5 bg-slate-200 text-slate-700 font-semibold rounded-lg hover:bg-slate-300 transition-colors"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button 
+                                            onClick={handleSaveEvent} 
+                                            type="button" 
+                                            className="px-5 py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                                        >
+                                            {editingEvent ? 'Save Changes' : 'Add Event'}
+                                        </button>
                                     </div>
-                                    {editingEvent && (<div className="mt-4 border-t border-slate-200 pt-4"><button onClick={() => { if (window.confirm('Are you sure?')) { handleDeleteEvent(editingEvent.id); setIsModalVisible(false); }}} type="button" className="w-full px-5 py-2.5 bg-red-100 text-red-700 font-semibold rounded-lg hover:bg-red-200 transition-colors">Delete Event</button></div>)}
+                                    {editingEvent && (
+                                        <div className="mt-4 border-t border-slate-200 pt-4">
+                                            <button 
+                                                onClick={() => { 
+                                                    if (window.confirm('Are you sure?')) { 
+                                                        handleDeleteEvent(editingEvent.id); 
+                                                        setIsModalVisible(false); 
+                                                    }
+                                                }} 
+                                                type="button" 
+                                                className="w-full px-5 py-2.5 bg-red-100 text-red-700 font-semibold rounded-lg hover:bg-red-200 transition-colors"
+                                            >
+                                                Delete Event
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>

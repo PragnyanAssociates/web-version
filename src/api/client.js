@@ -1,11 +1,9 @@
-// src/api/client.js
+// 📂 File: src/api/client.js (FINAL, WEB VERSION)
+
 import axios from "axios";
 import storage from "../utils/storage";
-
-// Define your backend server's address ONCE.
-// Change this depending on your backend hosting.
-const API_BASE_URL = "http://localhost:3001"; 
-// 👉 For production, you’ll likely replace with https://yourdomain.com/api
+// ★★★ 1. IMPORT THE CORRECT, LIVE URL FROM YOUR CENTRAL CONFIG FILE ★★★
+import { API_BASE_URL } from "../apiConfig"; // adjust path if apiConfig.js is at project root
 
 // Create a special, pre-configured instance of axios.
 const apiClient = axios.create({
@@ -36,8 +34,8 @@ apiClient.interceptors.request.use(
   }
 );
 
-// Export base URL (useful for images, file paths, etc.)
-export { API_BASE_URL };
+// ❌ Remove hardcoded base URL export
+// export { API_BASE_URL }; <-- DELETE THIS
 
-// Export the configured axios client
+// ✅ Export only the configured axios client
 export default apiClient;

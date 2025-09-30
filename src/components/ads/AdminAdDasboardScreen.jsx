@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import apiClient, { API_BASE_URL } from '../../api/client.js';
+import apiClient from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.tsx';
 import { MdArrowBack, MdCheckCircle, MdCancel, MdPauseCircle, MdImage, MdReceipt, MdClose, MdHourglassEmpty } from 'react-icons/md';
 import { FaEye, FaTrash } from 'react-icons/fa';
+// ✅ FIXED: Updated imports
+import { SERVER_URL } from '../../apiConfig';
+
 
 // --- Icon Components for Header ---
 function UserIcon() {
@@ -15,6 +18,7 @@ function UserIcon() {
   );
 }
 
+
 function HomeIcon() {
   return (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
@@ -23,6 +27,7 @@ function HomeIcon() {
     </svg>
   );
 }
+
 
 function CalendarIcon() {
   return (
@@ -34,6 +39,7 @@ function CalendarIcon() {
     </svg>
   );
 }
+
 
 function BellIcon() {
   return (
@@ -47,15 +53,18 @@ function BellIcon() {
   );
 }
 
+
 const AdminAdDashboardScreen = () => {
   const { user, token, logout, getProfileImageUrl, setUnreadCount } = useAuth();
   const navigate = useNavigate();
+
 
   // --- State for Header ---
   const [profile, setProfile] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [unreadCount, setLocalUnreadCount] = useState(0);
   const [query, setQuery] = useState("");
+
 
   // --- State for Ad Management ---
   const [activeTab, setActiveTab] = useState('review');
@@ -64,18 +73,17 @@ const AdminAdDashboardScreen = () => {
   const [selectedImage, setSelectedImage] = useState(null);
   const [currentAd, setCurrentAd] = useState(null); // For master-detail view
 
-  // --- Hooks for Header Functionality ---
+
+  // ✅ FIXED: Updated fetchUnreadNotifications function
   useEffect(() => {
     async function fetchUnreadNotifications() {
         if (!token) { setUnreadCount?.(0); return; }
         try {
-            const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-            if (res.ok) {
-                const data = await res.json();
-                const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                setLocalUnreadCount(count);
-                setUnreadCount?.(count);
-            } else { setUnreadCount?.(0); }
+            const response = await apiClient.get('/notifications');
+            const data = response.data;
+            const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+            setLocalUnreadCount(count);
+            setUnreadCount?.(count);
         } catch { setUnreadCount?.(0); }
     }
     fetchUnreadNotifications();
@@ -83,29 +91,31 @@ const AdminAdDashboardScreen = () => {
     return () => clearInterval(id);
   }, [token, setUnreadCount]);
 
+
+  // ✅ FIXED: Updated fetchProfile function
   useEffect(() => {
       async function fetchProfile() {
           if (!user?.id) { setLoadingProfile(false); return; }
           setLoadingProfile(true);
           try {
-              const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-              if (res.ok) { setProfile(await res.json()); }
-              else {
-                  setProfile({
-                      id: user.id, username: user.username || "Unknown",
-                      full_name: user.full_name || "User", role: user.role || "user",
-                  });
-              }
-          } catch { setProfile(null); }
-          finally { setLoadingProfile(false); }
+              const response = await apiClient.get(`/profiles/${user.id}`);
+              setProfile(response.data);
+          } catch {
+              setProfile({
+                  id: user.id, username: user.username || "Unknown",
+                  full_name: user.full_name || "User", role: user.role || "user",
+              });
+          } finally { setLoadingProfile(false); }
       }
       fetchProfile();
   }, [user]);
+
 
   // --- Helper Functions ---
   const handleLogout = () => {
     if (window.confirm("Are you sure you want to log out?")) { logout(); navigate("/"); }
   };
+
 
   const getDefaultDashboardRoute = () => {
     if (!user) return '/';
@@ -115,10 +125,12 @@ const AdminAdDashboardScreen = () => {
     return '/';
   };
 
+
+  // ✅ FIXED: Updated fetchAds function
   const fetchAds = useCallback(async () => {
     setIsLoading(true);
     try {
-      const { data } = await apiClient.get('/api/admin/ads');
+      const { data } = await apiClient.get('/admin/ads');
       setAds(data);
     } catch (error) {
       alert('Error: ' + (error.response?.data?.message || 'Could not fetch ads.'));
@@ -127,14 +139,17 @@ const AdminAdDashboardScreen = () => {
     }
   }, []);
 
+
   useEffect(() => { fetchAds(); }, [fetchAds]);
 
+
+  // ✅ FIXED: Updated handleUpdateStatus function
   const handleUpdateStatus = (adId, status) => {
     const actionVerb = status === 'stopped' ? 'stop' : status;
     if (window.confirm(`Are you sure you want to ${actionVerb} this ad?`)) {
       const updateStatus = async () => {
         try {
-          await apiClient.put(`/api/admin/ads/${adId}/status`, { status });
+          await apiClient.put(`/admin/ads/${adId}/status`, { status });
           alert(`Success: Ad has been ${status}.`);
           fetchAds();
         } catch (error) {
@@ -145,11 +160,12 @@ const AdminAdDashboardScreen = () => {
     }
   };
   
+  // ✅ FIXED: Updated handleDeleteAd function
   const handleDeleteAd = (adId) => {
     if (window.confirm(`Are you sure you want to permanently delete this ad? This action cannot be undone.`)) {
       const deleteAd = async () => {
         try {
-          await apiClient.delete(`/api/admin/ads/${adId}`);
+          await apiClient.delete(`/admin/ads/${adId}`);
           alert('Success: Ad has been deleted.');
           fetchAds();
         } catch (error) {
@@ -160,12 +176,14 @@ const AdminAdDashboardScreen = () => {
     }
   };
 
+
   const filteredAds = useMemo(() => {
     const lowercasedQuery = query.toLowerCase();
     const baseFilter = (ad) => (
         ad.userName.toLowerCase().includes(lowercasedQuery) ||
         ad.ad_type.toLowerCase().includes(lowercasedQuery)
     );
+
 
     switch (activeTab) {
       case 'review':
@@ -179,10 +197,12 @@ const AdminAdDashboardScreen = () => {
     }
   }, [ads, activeTab, query]);
 
+
   // Set the first ad as current when the filtered list changes
   useEffect(() => {
     setCurrentAd(filteredAds[0] || null);
   }, [filteredAds]);
+
 
   const StatusBadge = ({ status }) => {
     const configs = {
@@ -272,6 +292,7 @@ const AdminAdDashboardScreen = () => {
                 </div>
             </div>
 
+
             {/* Content */}
             {isLoading || loadingProfile ? (
                 <div className="flex justify-center items-center py-20"><div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>
@@ -304,6 +325,7 @@ const AdminAdDashboardScreen = () => {
                         </div>
                     </div>
 
+
                     {/* Right Column: Detail View */}
                     <div className="md:w-2/3 lg:w-3/4">
                         {currentAd ? (
@@ -319,15 +341,16 @@ const AdminAdDashboardScreen = () => {
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                     <div>
                                         <h4 className="font-semibold text-slate-700 mb-2">Ad Content</h4>
-                                        <img src={`${API_BASE_URL}${currentAd.ad_content_image_url}`} alt="Ad content" onClick={() => setSelectedImage(`${API_BASE_URL}${currentAd.ad_content_image_url}`)} className="w-full h-48 object-cover rounded-lg bg-white border border-slate-200 cursor-pointer hover:shadow-lg transition"/>
+                                        <img src={`${SERVER_URL}${currentAd.ad_content_image_url}`} alt="Ad content" onClick={() => setSelectedImage(`${SERVER_URL}${currentAd.ad_content_image_url}`)} className="w-full h-48 object-cover rounded-lg bg-white border border-slate-200 cursor-pointer hover:shadow-lg transition"/>
                                     </div>
                                     {currentAd.payment_screenshot_url && (
                                         <div>
                                             <h4 className="font-semibold text-slate-700 mb-2">Payment Proof</h4>
-                                            <img src={`${API_BASE_URL}${currentAd.payment_screenshot_url}`} alt="Payment proof" onClick={() => setSelectedImage(`${API_BASE_URL}${currentAd.payment_screenshot_url}`)} className="w-full h-48 object-cover rounded-lg bg-white border border-slate-200 cursor-pointer hover:shadow-lg transition"/>
+                                            <img src={`${SERVER_URL}${currentAd.payment_screenshot_url}`} alt="Payment proof" onClick={() => setSelectedImage(`${SERVER_URL}${currentAd.payment_screenshot_url}`)} className="w-full h-48 object-cover rounded-lg bg-white border border-slate-200 cursor-pointer hover:shadow-lg transition"/>
                                         </div>
                                     )}
                                 </div>
+
 
                                 {currentAd.payment_text && (
                                     <div>
@@ -335,6 +358,7 @@ const AdminAdDashboardScreen = () => {
                                       <p className="text-slate-600 text-sm p-3 bg-white rounded-lg border border-slate-200">{currentAd.payment_text}</p>
                                     </div>
                                 )}
+
 
                                 <div className="border-t border-slate-200 pt-4 flex justify-end gap-3">
                                     {currentAd.status === 'pending' && (
@@ -362,6 +386,7 @@ const AdminAdDashboardScreen = () => {
             )}
         </main>
 
+
         {/* Modal for viewing images */}
         {selectedImage && (
             <div 
@@ -387,6 +412,7 @@ const AdminAdDashboardScreen = () => {
             </div>
         )}
 
+
         <style jsx>{`
             @keyframes fadeIn {
                 from { opacity: 0; }
@@ -399,5 +425,6 @@ const AdminAdDashboardScreen = () => {
     </div>
   );
 };
+
 
 export default AdminAdDashboardScreen;

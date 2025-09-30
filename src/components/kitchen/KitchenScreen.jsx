@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.tsx";
-import { API_BASE_URL } from '../../apiConfig';
+import { SERVER_URL } from '../../apiConfig';
 import {
   MdCalendarToday,
   MdAdd,
@@ -15,8 +15,9 @@ import {
   MdDelete,
   MdKitchen,
   MdAssessment,
-  MdArrowBack, // +++ ADDED THIS IMPORT +++
+  MdArrowBack,
 } from 'react-icons/md';
+import apiClient from '../../api/client';
 
 // --- Icon Components for Header ---
 function UserIcon() {
@@ -59,7 +60,41 @@ function BellIcon() {
     </svg>
   );
 }
-
+function ProfileAvatar() {
+  const { getProfileImageUrl } = useAuth()
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  
+  const hasValidImage = getProfileImageUrl() && !imageError && imageLoaded
+  
+  return (
+    <div className="relative w-7 h-7 sm:w-9 sm:h-9">
+      {/* Always render the user placeholder */}
+      <div className={`absolute inset-0 rounded-full bg-gray-100 flex items-center justify-center border-2 border-slate-400 transition-opacity duration-200 ${hasValidImage ? 'opacity-0' : 'opacity-100'}`}>
+        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
+        </svg>
+      </div>
+      
+      {/* Profile image overlay */}
+      {getProfileImageUrl() && (
+        <img 
+          src={getProfileImageUrl()} 
+          alt="Profile" 
+          className={`absolute inset-0 w-full h-full rounded-full border border-slate-200 object-cover transition-opacity duration-200 ${hasValidImage ? 'opacity-100' : 'opacity-0'}`}
+          onError={() => {
+            setImageError(true)
+            setImageLoaded(false)
+          }}
+          onLoad={() => {
+            setImageError(false)
+            setImageLoaded(true)
+          }}
+        />
+      )}
+    </div>
+  )
+} 
 
 const KitchenScreen = () => {
   const { user, token, logout, getProfileImageUrl, setUnreadCount } = useAuth();
@@ -90,18 +125,12 @@ const KitchenScreen = () => {
         return;
       }
       try {
-        const res = await fetch(`${API_BASE_URL}/api/notifications`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-          setLocalUnreadCount(count);
-          setUnreadCount?.(count);
-        } else {
-          setUnreadCount?.(0);
-        }
-      } catch {
+        // ★★★ FIXED: Use apiClient correctly ★★★
+        const res = await apiClient.get('/notifications');
+        const count = Array.isArray(res.data) ? res.data.filter((n) => !n.is_read).length : 0;
+        setLocalUnreadCount(count);
+        setUnreadCount?.(count);
+      } catch (error) {
         setUnreadCount?.(0);
       }
     }
@@ -118,19 +147,16 @@ const KitchenScreen = () => {
       }
       setLoadingProfile(true);
       try {
-        const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-        if (res.ok) {
-          setProfile(await res.json());
-        } else {
-          setProfile({
-            id: user.id,
-            username: user.username || "Unknown",
-            full_name: user.full_name || "User",
-            role: user.role || "user",
-          });
-        }
-      } catch {
-        setProfile(null);
+        // ★★★ FIXED: Use apiClient correctly ★★★
+        const res = await apiClient.get(`/profiles/${user.id}`);
+        setProfile(res.data);
+      } catch (error) {
+        setProfile({
+          id: user.id,
+          username: user.username || "Unknown",
+          full_name: user.full_name || "User",
+          role: user.role || "user",
+        });
       } finally {
         setLoadingProfile(false);
       }
@@ -138,22 +164,23 @@ const KitchenScreen = () => {
     fetchProfile();
   }, [user]);
 
-  // Fetch data for Kitchen
+  // ★★★ FIXED: Fetch data using apiClient like mobile version ★★★
   const fetchData = useCallback(() => {
     setLoading(true);
     const dateString = selectedDate.toISOString().split('T')[0];
 
-    Promise.all([
-      fetch(`${API_BASE_URL}/api/kitchen/inventory`).then((res) => res.json()),
-      fetch(`${API_BASE_URL}/api/kitchen/usage?date=${dateString}`).then((res) => res.json()),
-      fetch(`${API_BASE_URL}/api/permanent-inventory`).then((res) => res.json()),
-    ])
-      .then(([provisionsData, usageData, permanentData]) => {
-        setProvisions(provisionsData || []);
-        setUsage(usageData || []);
-        setPermanentInventory(permanentData || []);
+    // ★★★ FIXED: Use apiClient for all calls like mobile version ★★★
+    const dailyProvisionsFetch = apiClient.get('/kitchen/inventory');
+    const dailyUsageFetch = apiClient.get(`/kitchen/usage?date=${dateString}`);
+    const permanentInventoryFetch = apiClient.get('/permanent-inventory');
+
+    Promise.all([dailyProvisionsFetch, dailyUsageFetch, permanentInventoryFetch])
+      .then(([provisionsRes, usageRes, permanentRes]) => {
+        setProvisions(provisionsRes.data || []);
+        setUsage(usageRes.data || []);
+        setPermanentInventory(permanentRes.data || []);
       })
-      .catch(() => window.alert('Error: Could not fetch kitchen data.'))
+      .catch((err) => window.alert(`Error: ${err.response?.data?.message || "Could not fetch kitchen data."}`))
       .finally(() => setLoading(false));
   }, [selectedDate]);
 
@@ -189,13 +216,13 @@ const KitchenScreen = () => {
 
   const handleDeletePermanentItem = (item) => {
     if (window.confirm(`Delete "${item.item_name}"?\nAre you sure you want to permanently delete this item?`)) {
-      fetch(`${API_BASE_URL}/api/permanent-inventory/${item.id}`, { method: 'DELETE' })
-        .then((res) => {
-          if (!res.ok) throw new Error('Failed to delete');
+      // ★★★ FIXED: Use apiClient like mobile version ★★★
+      apiClient.delete(`/permanent-inventory/${item.id}`)
+        .then(() => {
           window.alert('Success: Item deleted.');
           fetchData();
         })
-        .catch(() => window.alert('Error: Could not delete the item.'));
+        .catch((error) => window.alert(`Error: ${error.response?.data?.message || "Could not delete the item."}`));
     }
   };
 
@@ -258,14 +285,8 @@ const KitchenScreen = () => {
               <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
 
               <div className="flex items-center gap-2 sm:gap-3">
-                <img
-                  src={getProfileImageUrl() || "/placeholder.svg"}
-                  alt="Profile"
-                  className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover"
-                  onError={(e) => {
-                    e.currentTarget.src = "/assets/profile.png"
-                  }}
-                />
+              
+<ProfileAvatar />
                 <div className="hidden sm:flex flex-col">
                   <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">
                     {profile?.full_name || profile?.username || "User"}
@@ -300,20 +321,19 @@ const KitchenScreen = () => {
       </header>
 
       <main className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-6 sm:py-8">
-        {/* +++ ADDED THIS BACK BUTTON +++ */}
         <div className="mb-6">
-            <button
-                onClick={() => navigate(getDefaultDashboardRoute())}
-                className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors"
-                title="Back to Dashboard"
-            >
-                <MdArrowBack />
-                <span>Back to Dashboard</span>
-            </button>
+          <button
+            onClick={() => navigate(getDefaultDashboardRoute())}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors"
+            title="Back to Dashboard"
+          >
+            <MdArrowBack />
+            <span>Back to Dashboard</span>
+          </button>
         </div>
 
         {(loadingProfile && !profile) ? (
-            <div className="flex justify-center items-center py-20"><div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>
+          <div className="flex justify-center items-center py-20"><div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>
         ) : (
           <div>
             <div className="p-4 sm:p-5 border-b border-slate-200">
@@ -438,7 +458,6 @@ const KitchenScreen = () => {
   );
 };
 
-
 // --- Sub-components (LoadingSpinner, Section, etc.) ---
 
 const LoadingSpinner = () => (
@@ -509,7 +528,7 @@ const LoadingSpinner = () => (
                     <div className="flex items-center space-x-3">
                       {item.image_url ? (
                         <img
-                          src={`${API_BASE_URL}${item.image_url}`}
+                          src={`${SERVER_URL}${item.image_url}`}
                           alt={item.item_name}
                           className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg object-cover border border-slate-200 shadow-sm"
                         />
@@ -597,59 +616,51 @@ const LoadingSpinner = () => (
       }
       setLoading(true);
   
-      let url = '';
-      let method = 'POST';
-      let headers = {};
-      let body;
-  
-      if (mode === 'logUsage') {
-        url = `${API_BASE_URL}/api/kitchen/usage`;
-        headers = { 'Content-Type': 'application/json' };
-        body = JSON.stringify({
-          inventoryId: item.id,
-          quantityUsed: quantity,
-          usageDate: new Date().toISOString().split('T')[0],
-        });
-      } else {
-        const formData = new FormData();
-        formData.append('itemName', itemName);
-        if (image) {
-          formData.append('itemImage', image, image.name);
-        }
-        if (mode === 'addProvision') {
-          url = `${API_BASE_URL}/api/kitchen/inventory`;
-          formData.append('quantity', String(quantity));
-          formData.append('unit', unit);
-          body = formData;
-          headers = {};
-        } else if (mode === 'addPermanentItem') {
-          url = `${API_BASE_URL}/api/permanent-inventory`;
-          formData.append('totalQuantity', String(quantity));
-          formData.append('notes', notes);
-          body = formData;
-          headers = {};
-        } else if (mode === 'editPermanentItem') {
-          url = `${API_BASE_URL}/api/permanent-inventory/${item.id}`;
-          method = 'PUT';
-          formData.append('totalQuantity', String(quantity));
-          formData.append('notes', notes);
-          body = formData;
-          headers = {};
-        } else {
-          setLoading(false);
-          return;
-        }
-      }
-  
       try {
-        const res = await fetch(url, { method, headers, body });
-        if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.message || 'An unknown server error.');
+        // ★★★ FIXED: Use apiClient consistently like mobile version ★★★
+        if (mode === 'logUsage') {
+          await apiClient.post('/kitchen/usage', {
+            inventoryId: item.id,
+            quantityUsed: quantity,
+            usageDate: new Date().toISOString().split('T')[0],
+          });
+        } else {
+          const formData = new FormData();
+          formData.append('itemName', itemName);
+          if (image) {
+            formData.append('itemImage', image);
+          }
+  
+          switch (mode) {
+            case 'addProvision':
+              formData.append('quantity', String(quantity));
+              formData.append('unit', unit);
+              await apiClient.post('/kitchen/inventory', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+              });
+              break;
+            case 'addPermanentItem':
+              formData.append('totalQuantity', String(quantity));
+              formData.append('notes', notes);
+              await apiClient.post('/permanent-inventory', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+              });
+              break;
+            case 'editPermanentItem':
+              formData.append('totalQuantity', String(quantity));
+              formData.append('notes', notes);
+              await apiClient.put(`/permanent-inventory/${item.id}`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+              });
+              break;
+            default:
+              setLoading(false);
+              return;
+          }
         }
         onSuccess();
       } catch (e) {
-        window.alert(`Error: ${e.message}`);
+        window.alert(`Error: ${e.response?.data?.message || "An unknown server error."}`);
       } finally {
         setLoading(false);
       }
@@ -733,7 +744,7 @@ const LoadingSpinner = () => (
                 {(mode === 'addPermanentItem' || mode === 'editPermanentItem') && (
                   <FileInput
                     image={image}
-                    existingImageUrl={item?.image_url ? `${API_BASE_URL}${item.image_url}` : undefined}
+                    existingImageUrl={item?.image_url ? `${SERVER_URL}${item.image_url}` : undefined}
                     onChange={handleFileChange}
                   />
                 )}

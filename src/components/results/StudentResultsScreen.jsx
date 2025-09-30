@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from "react-router-dom";
 import { useAuth } from '../../context/AuthContext.tsx';
-import { API_BASE_URL } from '../../apiConfig';
+import apiClient from '../../api/client';
 import { MdArticle, MdTrendingUp, MdChatBubbleOutline, MdDownload, MdAnalytics, MdArrowBack } from "react-icons/md";
 
 // --- Icon Components for Header ---
@@ -65,15 +65,11 @@ export default function StudentResultsScreen() {
     async function fetchUnreadNotifications() {
         if (!token) { setUnreadCount?.(0); return; }
         try {
-            const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-            if (res.ok) {
-                const data = await res.json();
-                const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                setLocalUnreadCount(count);
-                setUnreadCount?.(count);
-            } else {
-                setUnreadCount?.(0);
-            }
+            const response = await apiClient.get('/notifications');
+            const data = response.data;
+            const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+            setLocalUnreadCount(count);
+            setUnreadCount?.(count);
         } catch {
             setUnreadCount?.(0);
         }
@@ -88,19 +84,15 @@ export default function StudentResultsScreen() {
           if (!user?.id) { setLoadingProfile(false); return; }
           setLoadingProfile(true);
           try {
-              const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-              if (res.ok) {
-                  setProfile(await res.json());
-              } else {
-                  setProfile({
-                      id: user.id,
-                      username: user.username || "Unknown",
-                      full_name: user.full_name || "User",
-                      role: user.role || "user",
-                  });
-              }
+              const response = await apiClient.get(`/profiles/${user.id}`);
+              setProfile(response.data);
           } catch {
-              setProfile(null);
+              setProfile({
+                  id: user.id,
+                  username: user.username || "Unknown",
+                  full_name: user.full_name || "User",
+                  role: user.role || "user",
+              });
           } finally {
               setLoadingProfile(false);
           }
@@ -128,11 +120,11 @@ export default function StudentResultsScreen() {
     if (!user?.id) return;
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/reports/student/${user.id}`);
-      if (!response.ok) throw new Error("Failed to fetch progress reports.");
-      setReports(await response.json());
+      const response = await apiClient.get(`/reports/student/${user.id}`);
+      setReports(response.data);
     } catch (error) {
-      alert(error.message);
+      // ★★★ REMOVED ': any' TYPE ANNOTATION ★★★
+      alert(error.response?.data?.message || "Failed to fetch progress reports.");
     } finally {
       setIsLoading(false);
     }

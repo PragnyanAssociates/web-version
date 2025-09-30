@@ -1,9 +1,8 @@
-"use client"
-
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from "../../context/AuthContext.tsx";
-import { API_BASE_URL } from "../../apiConfig";
+import { SERVER_URL } from "../../apiConfig"; // Fixed import path
+import apiClient from "../../api/client"; // Use apiClient instead of fetch
 import { Country, State, City } from "country-state-city";
 import {
     FaRoute,
@@ -26,7 +25,7 @@ import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 
-// --- Icon Components for Header (from FoodScreen) ---
+// --- Icon Components for Header ---
 function UserIcon() {
     return (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
@@ -75,7 +74,7 @@ L.Icon.Default.mergeOptions({
     shadowUrl: markerShadow,
 });
 
-// --- Transport Specific Components (Unchanged) ---
+// --- Transport Specific Components ---
 function TransportIcon() {
     return (
         <svg className="w-6 h-6 sm:w-8 sm:h-8 text-blue-800" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -98,7 +97,6 @@ const FitBounds = ({ coordinates }) => {
 };
 
 const RouteFormModal = ({ routeToEdit, onClose, onSaved }) => {
-    // (This component's code remains unchanged)
     const { user } = useAuth();
     const isEdit = !!routeToEdit;
     const [isLoading, setIsLoading] = useState(isEdit);
@@ -125,8 +123,9 @@ const RouteFormModal = ({ routeToEdit, onClose, onSaved }) => {
         const loadEditData = async () => {
             if (!isEdit) { setIsLoading(false); return; }
             try {
-                const res = await fetch(`${API_BASE_URL}/api/transport/routes/${routeToEdit.route_id}`);
-                const data = await res.json();
+                // ★★★ Fix: Use apiClient instead of fetch ★★★
+                const response = await apiClient.get(`/transport/routes/${routeToEdit.route_id}`);
+                const data = response.data;
                 setRouteName(data.route_name || "");
                 setDriverName(data.driver_name || "");
                 setDriverPhone(data.driver_phone || "");
@@ -146,7 +145,7 @@ const RouteFormModal = ({ routeToEdit, onClose, onSaved }) => {
                     }
                 }
             } catch (e) {
-                alert(e.message);
+                alert(e.response?.data?.message || e.message);
                 onClose();
             } finally {
                 setIsLoading(false);
@@ -190,20 +189,32 @@ const RouteFormModal = ({ routeToEdit, onClose, onSaved }) => {
             return alert("Please fill all required fields and provide at least two valid boarding points.");
         }
 
-        const payload = { route_name: routeName, driver_name: driverName, driver_phone: driverPhone, conductor_name: conductorName, conductor_phone: conductorPhone, stops, city: cityName, state: stateName, country: countryName, created_by: user.id };
-        const url = isEdit ? `${API_BASE_URL}/api/transport/routes/${routeToEdit.route_id}` : `${API_BASE_URL}/api/transport/routes`;
-        const method = isEdit ? "PUT" : "POST";
+        const payload = { 
+            route_name: routeName, 
+            driver_name: driverName, 
+            driver_phone: driverPhone, 
+            conductor_name: conductorName, 
+            conductor_phone: conductorPhone, 
+            stops, 
+            city: cityName, 
+            state: stateName, 
+            country: countryName, 
+            created_by: user.id 
+        };
 
         setIsSaving(true);
         try {
-            const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-            const json = await res.json();
-            if (!res.ok) throw new Error(json.message || "Save failed");
+            // ★★★ Fix: Use apiClient instead of fetch ★★★
+            if (isEdit) {
+                await apiClient.put(`/transport/routes/${routeToEdit.route_id}`, payload);
+            } else {
+                await apiClient.post('/transport/routes', payload);
+            }
             alert(`Route ${isEdit ? "updated" : "created"} successfully`);
             onSaved?.();
             onClose();
         } catch (e) {
-            alert(e.message);
+            alert(e.response?.data?.message || e.message);
         } finally {
             setIsSaving(false);
         }
@@ -280,23 +291,23 @@ const RouteFormModal = ({ routeToEdit, onClose, onSaved }) => {
     return createPortal(modalContent, document.body);
 };
 
-
 const TransportListScreen = ({ onSelectDetail }) => {
     const [routes, setRoutes] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        (async () => {
+        const fetchRoutes = async () => {
             try {
-                const res = await fetch(`${API_BASE_URL}/api/transport/routes`);
-                if (!res.ok) throw new Error("Could not fetch routes.");
-                setRoutes(await res.json());
+                // ★★★ Fix: Use apiClient instead of fetch ★★★
+                const response = await apiClient.get('/transport/routes');
+                setRoutes(response.data);
             } catch (e) {
-                alert(e.message);
+                alert(e.response?.data?.message || e.message);
             } finally {
                 setLoading(false);
             }
-        })();
+        };
+        fetchRoutes();
     }, []);
 
     if (loading) {
@@ -348,7 +359,6 @@ const TransportListScreen = ({ onSelectDetail }) => {
     );
 };
 
-
 const RouteDetailScreen = ({ routeId, routeName, onBack }) => {
     const [routeData, setRouteData] = useState(null);
     const [coords, setCoords] = useState([]);
@@ -357,9 +367,9 @@ const RouteDetailScreen = ({ routeId, routeName, onBack }) => {
         let timer;
         const fetchData = async () => {
             try {
-                const res = await fetch(`${API_BASE_URL}/api/transport/routes/${routeId}`);
-                if (!res.ok) throw new Error("Could not fetch route details.");
-                const data = await res.json();
+                // ★★★ Fix: Use apiClient instead of fetch ★★★
+                const response = await apiClient.get(`/transport/routes/${routeId}`);
+                const data = response.data;
                 setRouteData(data);
 
                 if (data?.route_path_polyline) {
@@ -370,7 +380,7 @@ const RouteDetailScreen = ({ routeId, routeName, onBack }) => {
                     setCoords([]);
                 }
             } catch (e) {
-                alert(e.message);
+                alert(e.response?.data?.message || e.message);
             }
         };
 
@@ -484,8 +494,7 @@ const RouteDetailScreen = ({ routeId, routeName, onBack }) => {
         </div>
     );
 };
-
-const AdminTransportPanel = () => {
+const AdminTransportPanel = ({ onSelectDetail }) => {
     const [routes, setRoutes] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
@@ -494,11 +503,10 @@ const AdminTransportPanel = () => {
     const fetchRoutes = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/transport/routes`);
-            if (!res.ok) throw new Error("Could not fetch routes.");
-            setRoutes(await res.json());
+            const response = await apiClient.get('/transport/routes');
+            setRoutes(response.data);
         } catch (e) {
-            alert(e.message);
+            alert(e.response?.data?.message || e.message);
         } finally {
             setLoading(false);
         }
@@ -511,12 +519,11 @@ const AdminTransportPanel = () => {
     const handleDelete = async (id) => {
         if (!window.confirm("Are you sure you want to delete this route? This action cannot be undone.")) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/api/transport/routes/${id}`, { method: "DELETE" });
-            if (!res.ok) throw new Error("Failed to delete route.");
+            await apiClient.delete(`/transport/routes/${id}`);
             await fetchRoutes();
             alert("Route deleted successfully.");
         } catch (e) {
-            alert(e.message);
+            alert(e.response?.data?.message || e.message);
         }
     };
     
@@ -525,10 +532,26 @@ const AdminTransportPanel = () => {
         setShowModal(true);
     }
     
-    const handleEdit = (route) => {
+    const handleEdit = (route, e) => {
+        e.stopPropagation();
         setEditing(route);
         setShowModal(true);
     }
+
+    const handleDeleteClick = (id, e) => {
+        e.stopPropagation();
+        handleDelete(id);
+    }
+
+    // ✅ FIXED: Add safety check for onSelectDetail function
+    const handleRouteClick = (routeId, routeName) => {
+        if (typeof onSelectDetail === 'function') {
+            onSelectDetail(routeId, routeName);
+        } else {
+            console.error('onSelectDetail is not a function:', onSelectDetail);
+            alert('Navigation function is not available. Please refresh the page.');
+        }
+    };
 
     return (
         <div className="space-y-6">
@@ -553,8 +576,9 @@ const AdminTransportPanel = () => {
                         {routes.map((r, index) => (
                             <div
                                 key={r.route_id}
-                                className="p-4 sm:p-5 flex items-center justify-between hover:bg-slate-100 transition-colors"
+                                className="p-4 sm:p-5 flex items-center justify-between hover:bg-slate-100 transition-colors cursor-pointer"
                                 style={{ animation: `fadeInUp 0.5s ease-out ${index * 0.05}s both` }}
+                                onClick={() => handleRouteClick(r.route_id, r.route_name)} // ✅ FIXED: Use safe click handler
                             >
                                 <div className="flex items-center gap-4">
                                      <div className="w-11 h-11 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -562,13 +586,13 @@ const AdminTransportPanel = () => {
                                     </div>
                                     <div>
                                         <h3 className="font-semibold text-slate-800 text-base sm:text-lg">{r.route_name}</h3>
-                                        <p className="text-slate-500 text-sm">Manage bus route details and stops</p>
+                                        <p className="text-slate-500 text-sm">Click to view details, map and live tracking</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2 ml-4">
                                     <button
                                         className="w-9 h-9 bg-blue-50 hover:bg-blue-200 text-blue-600 rounded-lg transition-colors duration-200 flex items-center justify-center"
-                                        onClick={() => handleEdit(r)}
+                                        onClick={(e) => handleEdit(r, e)}
                                         aria-label="Edit Route"
                                         title="Edit"
                                     >
@@ -576,7 +600,7 @@ const AdminTransportPanel = () => {
                                     </button>
                                     <button
                                         className="w-9 h-9 bg-red-50 hover:bg-red-200 text-red-600 rounded-lg transition-colors duration-200 flex items-center justify-center"
-                                        onClick={() => handleDelete(r.route_id)}
+                                        onClick={(e) => handleDeleteClick(r.route_id, e)}
                                         aria-label="Delete Route"
                                         title="Delete"
                                     >
@@ -608,7 +632,7 @@ const AdminTransportPanel = () => {
     );
 };
 
-// --- Main Component to orchestrate views (Updated) ---
+// --- Main Component ---
 const TransportScreen = () => {
     const { user, token, logout, getProfileImageUrl, setUnreadCount } = useAuth();
     const navigate = useNavigate();
@@ -642,17 +666,12 @@ const TransportScreen = () => {
                 return;
             }
             try {
-                const res = await fetch(`${API_BASE_URL}/api/notifications`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                    setLocalUnreadCount(count);
-                    setUnreadCount?.(count);
-                } else {
-                    setUnreadCount?.(0);
-                }
+                // ★★★ Fix: Use apiClient instead of fetch ★★★
+                const response = await apiClient.get('/notifications');
+                const data = response.data;
+                const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+                setLocalUnreadCount(count);
+                setUnreadCount?.(count);
             } catch {
                 setUnreadCount?.(0);
             }
@@ -670,19 +689,16 @@ const TransportScreen = () => {
             }
             setLoadingProfile(true);
             try {
-                const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-                if (res.ok) {
-                    setProfile(await res.json());
-                } else {
-                    setProfile({
-                        id: user.id,
-                        username: user.username || "Unknown",
-                        full_name: user.full_name || "User",
-                        role: user.role || "user",
-                    });
-                }
+                // ★★★ Fix: Use apiClient instead of fetch ★★★
+                const response = await apiClient.get(`/profiles/${user.id}`);
+                setProfile(response.data);
             } catch {
-                setProfile(null);
+                setProfile({
+                    id: user.id,
+                    username: user.username || "Unknown",
+                    full_name: user.full_name || "User",
+                    role: user.role || "user",
+                });
             } finally {
                 setLoadingProfile(false);
             }
@@ -707,10 +723,12 @@ const TransportScreen = () => {
         return "/";
     };
 
-    const handleSelectDetail = (routeId, routeName) => {
-        setSelectedRoute({ id: routeId, name: routeName });
-        setView("detail");
-    };
+   // ✅ FIXED: Ensure handleSelectDetail is always defined with useCallback
+const handleSelectDetail = useCallback((routeId, routeName) => {
+    console.log('handleSelectDetail called with:', { routeId, routeName }); // Debug log
+    setSelectedRoute({ id: routeId, name: routeName });
+    setView("detail");
+}, []);
 
     const handleBackToList = () => {
         setView("list");
@@ -718,12 +736,15 @@ const TransportScreen = () => {
     };
 
     // Render content based on user role and current view
-    const renderContent = () => {
-        if (user?.role === "admin") {
-            return <AdminTransportPanel />;
-        }
+// ✅ FIXED: renderContent with inline handler definition
+const renderContent = () => {
+    // Define the handler function right here to ensure it's always available
+    const handleRouteDetailClick = (routeId, routeName) => {
+        setSelectedRoute({ id: routeId, name: routeName });
+        setView("detail");
+    };
 
-        // Default view for students/teachers
+    if (user?.role === "admin") {
         switch (view) {
             case "detail":
                 return (
@@ -735,11 +756,28 @@ const TransportScreen = () => {
                 );
             case "list":
             default:
-                return (
-                    <TransportListScreen onSelectDetail={handleSelectDetail} />
-                );
+                return <AdminTransportPanel onSelectDetail={handleRouteDetailClick} />; // ✅ Now guaranteed to be a function
         }
-    };
+    }
+
+    // Default view for students/teachers
+    switch (view) {
+        case "detail":
+            return (
+                <RouteDetailScreen
+                    routeId={selectedRoute.id}
+                    routeName={selectedRoute.name}
+                    onBack={handleBackToList}
+                />
+            );
+        case "list":
+        default:
+            return (
+                <TransportListScreen onSelectDetail={handleRouteDetailClick} />
+            );
+    }
+};
+
     
     // Render the appropriate back button based on the current view
     const renderBackButton = () => {

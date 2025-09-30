@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from "../../apiConfig";
+import { SERVER_URL } from "../../apiConfig"; // ← For images, like ProfileScreen
+import apiClient from "../../api/client"; // ← Use apiClient like mobile version
 import { useAuth } from "../../context/AuthContext.tsx";
 import { MdPhotoLibrary, MdCloudUpload, MdEvent, MdTitle, MdClose, MdDelete, MdAdd, MdEdit } from "react-icons/md";
 
-// --- Icon Components for Header ---
+// --- Icon Components for Header (Unchanged) ---
 function UserIcon() {
     return (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
@@ -46,7 +47,6 @@ function BellIcon() {
     );
 }
 
-// Custom SVG Icon for Digital Labs
 function DigitalLabIcon() {
     return (
         <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
@@ -67,7 +67,7 @@ export default function TeacherAdminLabsScreen() {
     // --- State for Labs Page ---
     const [labs, setLabs] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [viewMode, setViewMode] = useState('list'); // 'list' or 'form'
+    const [viewMode, setViewMode] = useState('list');
     const [editingLab, setEditingLab] = useState(null);
 
     const initialFormState = {
@@ -81,31 +81,37 @@ export default function TeacherAdminLabsScreen() {
     const [selectedImage, setSelectedImage] = useState(null);
     const [selectedFile, setSelectedFile] = useState(null);
 
-    // --- Hooks for Header ---
+    // --- Header Profile Fetch (FIXED) ---
     useEffect(() => {
         async function fetchProfile() {
             if (!user?.id) return;
             try {
-                const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-                if (res.ok) setProfile(await res.json());
-                else setProfile({ id: user.id, username: user.username || "Unknown", full_name: user.full_name || "User", role: user.role || "user" });
-            } catch { setProfile(null); }
+                const response = await apiClient.get(`/profiles/${user.id}`); // ✅ Fixed: Use apiClient, remove /api prefix
+                setProfile(response.data);
+            } catch {
+                setProfile({
+                    id: user.id,
+                    username: user.username || "Unknown",
+                    full_name: user.full_name || "User",
+                    role: user.role || "user"
+                });
+            }
         }
         fetchProfile();
     }, [user]);
 
+    // --- Header Notifications Fetch (FIXED) ---
     useEffect(() => {
         async function fetchUnreadNotifications() {
             if (!token) { setUnreadCount?.(0); return; }
             try {
-                const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res.ok) {
-                    const data = await res.json();
-                    const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                    setLocalUnreadCount(count);
-                    setUnreadCount?.(count);
-                } else { setUnreadCount?.(0); }
-            } catch { setUnreadCount?.(0); }
+                const response = await apiClient.get('/notifications'); // ✅ Fixed: Use apiClient, remove /api prefix
+                const count = Array.isArray(response.data) ? response.data.filter((n) => !n.is_read).length : 0;
+                setLocalUnreadCount(count);
+                setUnreadCount?.(count);
+            } catch {
+                setUnreadCount?.(0);
+            }
         }
         fetchUnreadNotifications();
         const id = setInterval(fetchUnreadNotifications, 60000);
@@ -127,14 +133,14 @@ export default function TeacherAdminLabsScreen() {
         return '/';
     };
 
+    // --- Labs Fetch (FIXED) ---
     const fetchLabs = useCallback(async () => {
         setIsLoading(true);
         try {
-            const response = await fetch(`${API_BASE_URL}/api/labs`);
-            if (!response.ok) throw new Error("Failed to fetch labs");
-            setLabs(await response.json());
+            const response = await apiClient.get('/labs'); // ✅ Fixed: Use apiClient, remove /api prefix
+            setLabs(response.data);
         } catch (e) {
-            alert(e.message);
+            alert(e.response?.data?.message || 'Failed to fetch labs'); // ✅ Fixed: Consistent error handling
         } finally {
             setIsLoading(false);
         }
@@ -149,6 +155,7 @@ export default function TeacherAdminLabsScreen() {
             setSelectedImage(e.target.files[0]);
         }
     };
+
     const handleChooseFile = (e) => {
         if (e.target.files && e.target.files[0]) {
             setSelectedFile(e.target.files[0]);
@@ -179,6 +186,7 @@ export default function TeacherAdminLabsScreen() {
         setViewMode('list');
     };
 
+    // --- Save Lab (FIXED) ---
     const handleSave = async () => {
         if (!formData.title || !formData.description) {
             return alert("Title and Description are required.");
@@ -186,6 +194,7 @@ export default function TeacherAdminLabsScreen() {
         if (!formData.access_url && !selectedFile && !editingLab?.file_path) {
             return alert("You must provide an Access URL or upload a file.");
         }
+
         const data = new FormData();
         Object.keys(formData).forEach((key) => data.append(key, formData[key]));
         if (user) data.append("created_by", user.id);
@@ -193,32 +202,34 @@ export default function TeacherAdminLabsScreen() {
         if (selectedImage) data.append("coverImage", selectedImage);
         if (selectedFile) data.append("labFile", selectedFile);
 
-        const url = editingLab
-            ? `${API_BASE_URL}/api/labs/${editingLab.id}`
-            : `${API_BASE_URL}/api/labs`;
-        const method = editingLab ? "PUT" : "POST";
-
         try {
-            const response = await fetch(url, { method, body: data });
-            const resData = await response.json();
-            if (!response.ok) throw new Error(resData.message);
+            // ✅ Fixed: Use apiClient with same syntax as mobile version
+            if (editingLab) {
+                await apiClient.put(`/labs/${editingLab.id}`, data, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+            } else {
+                await apiClient.post('/labs', data, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+            }
             alert(`Lab ${editingLab ? "updated" : "created"} successfully!`);
             handleReturnToList();
             fetchLabs();
         } catch (error) {
-            alert(error.message);
+            alert(error.response?.data?.message || 'Failed to save lab.'); // ✅ Fixed: Consistent error handling
         }
     };
 
+    // --- Delete Lab (FIXED) ---
     const handleDelete = async (id) => {
         if (!window.confirm("Are you sure you want to delete this lab?")) return;
         try {
-            const response = await fetch(`${API_BASE_URL}/api/labs/${id}`, { method: "DELETE" });
-            if (!response.ok) throw new Error("Failed to delete lab.");
+            await apiClient.delete(`/labs/${id}`); // ✅ Fixed: Use apiClient, remove /api prefix
             alert("Lab deleted.");
             fetchLabs();
         } catch (e) {
-            alert(e.message);
+            alert(e.response?.data?.message || "Failed to delete lab."); // ✅ Fixed: Consistent error handling
         }
     };
 
@@ -314,7 +325,13 @@ export default function TeacherAdminLabsScreen() {
                             <ul className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 {labs.map((lab, index) => (
                                     <li key={lab.id} className="bg-slate-50 rounded-lg shadow-sm border border-slate-200 p-4 transition-shadow hover:shadow-md flex flex-col h-full" style={{ animation: `fadeInUp 0.6s ease-out ${index * 0.1}s both` }}>
-                                        <img src={lab.cover_image_url ? `${API_BASE_URL}${lab.cover_image_url}` : "/assets/lab-placeholder.png"} alt={lab.title} className="w-full h-40 rounded-md object-cover flex-shrink-0 bg-slate-200 mb-4" onError={(e) => { e.currentTarget.src = "/assets/lab-placeholder.png"; }} />
+                                        {/* ✅ Fixed: Use SERVER_URL for images like ProfileScreen */}
+                                        <img 
+                                            src={lab.cover_image_url ? `${SERVER_URL}${lab.cover_image_url}` : "/assets/lab-placeholder.png"} 
+                                            alt={lab.title} 
+                                            className="w-full h-40 rounded-md object-cover flex-shrink-0 bg-slate-200 mb-4" 
+                                            onError={(e) => { e.currentTarget.src = "/assets/lab-placeholder.png"; }} 
+                                        />
                                         <div className="flex flex-col flex-grow">
                                             <div className="flex-grow">
                                                 <span className="inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded-full mb-2">{lab.lab_type || "General"}</span>
@@ -337,7 +354,7 @@ export default function TeacherAdminLabsScreen() {
                         )}
                     </>
                 ) : (
-                    // --- NEW: Form is now part of the main page body ---
+                    // --- Form View (Unchanged) ---
                     <div className="bg-slate-50 rounded-xl shadow-lg border border-slate-200 p-4 sm:p-8">
                         <div className="max-w-4xl mx-auto">
                             <div className="text-center mb-6 sm:mb-8">
@@ -414,4 +431,4 @@ export default function TeacherAdminLabsScreen() {
             </main>
         </div>
     );
-};
+}

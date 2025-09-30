@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { API_BASE_URL } from '../../apiConfig';
+import apiClient from '../../api/client'; // ← Use apiClient like mobile version
 import { useAuth } from '../../context/AuthContext.tsx';
 import { 
   MdAdd, 
@@ -14,14 +14,13 @@ import {
   MdCancel,
   MdPeople,
   MdPlace,
-  MdSchool, // Icon for Academic
-  MdSportsSoccer, // Icon for Sports
-  MdPalette, // Icon for Cultural
-  MdCelebration // Icon for General/Other events
+  MdSchool,
+  MdSportsSoccer,
+  MdPalette,
+  MdCelebration
 } from 'react-icons/md';
 
-
-// --- Icon Components for Header ---
+// --- Icon Components for Header (Unchanged) ---
 function UserIcon() {
     return (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
@@ -31,7 +30,6 @@ function UserIcon() {
     );
 }
 
-
 function HomeIcon() {
     return (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
@@ -40,7 +38,6 @@ function HomeIcon() {
         </svg>
     );
 }
-
 
 function CalendarIcon() {
     return (
@@ -52,7 +49,6 @@ function CalendarIcon() {
         </svg>
     );
 }
-
 
 function BellIcon() {
     return (
@@ -66,24 +62,20 @@ function BellIcon() {
     );
 }
 
-
 // --- Main Component ---
 const AdminEventsScreen = () => {
     const { user, token, logout, getProfileImageUrl, setUnreadCount } = useAuth();
     const navigate = useNavigate();
 
-
     // --- State for Header ---
     const [profile, setProfile] = useState(null);
-    const [loadingProfile, setLoadingProfile]= useState(true);
-    const [unreadCount, setLocalUnreadCount]= useState(0);
-    const [query, setQuery]= useState("");
-
+    const [loadingProfile, setLoadingProfile] = useState(true);
+    const [unreadCount, setLocalUnreadCount] = useState(0);
+    const [query, setQuery] = useState("");
 
     // --- State for Events functionality ---
-    const [view, setView] =useState('list');
-    const [selectedEvent, setSelectedEvent]= useState(null);
-
+    const [view, setView] = useState('list');
+    const [selectedEvent, setSelectedEvent] = useState(null);
 
     // --- Dynamic Page Info for Header ---
     const pageInfo = useMemo(() => {
@@ -97,8 +89,7 @@ const AdminEventsScreen = () => {
         }
     }, [view, selectedEvent]);
 
-
-    // --- Hooks for Header Functionality ---
+    // --- Header Notifications Fetch (FIXED) ---
     useEffect(() => {
         async function fetchUnreadNotifications() {
             if (!token) {
@@ -106,17 +97,10 @@ const AdminEventsScreen = () => {
                 return;
             }
             try {
-                const res = await fetch(`${API_BASE_URL}/api/notifications`, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                    setLocalUnreadCount(count);
-                    setUnreadCount?.(count);
-                } else {
-                    setUnreadCount?.(0);
-                }
+                const response = await apiClient.get('/notifications'); // ✅ Fixed: Use apiClient, remove /api prefix
+                const count = Array.isArray(response.data) ? response.data.filter((n) => !n.is_read).length : 0;
+                setLocalUnreadCount(count);
+                setUnreadCount?.(count);
             } catch {
                 setUnreadCount?.(0);
             }
@@ -126,7 +110,7 @@ const AdminEventsScreen = () => {
         return () => clearInterval(id);
     }, [token, setUnreadCount]);
 
-
+    // --- Header Profile Fetch (FIXED) ---
     useEffect(() => {
         async function fetchProfile() {
             if (!user?.id) {
@@ -135,26 +119,21 @@ const AdminEventsScreen = () => {
             }
             setLoadingProfile(true);
             try {
-                const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-                if (res.ok) {
-                    setProfile(await res.json());
-                } else {
-                    setProfile({
-                        id: user.id,
-                        username: user.username || "Unknown",
-                        full_name: user.full_name || "User",
-                        role: user.role || "user",
-                    });
-                }
+                const response = await apiClient.get(`/profiles/${user.id}`); // ✅ Fixed: Use apiClient, remove /api prefix
+                setProfile(response.data);
             } catch {
-                setProfile(null);
+                setProfile({
+                    id: user.id,
+                    username: user.username || "Unknown",
+                    full_name: user.full_name || "User",
+                    role: user.role || "user",
+                });
             } finally {
                 setLoadingProfile(false);
             }
         }
         fetchProfile();
     }, [user]);
-
 
     // --- Helper Functions ---
     const handleLogout = () => {
@@ -164,7 +143,6 @@ const AdminEventsScreen = () => {
         }
     };
 
-
     const getDefaultDashboardRoute = () => {
         if (!user) return '/';
         if (user.role === 'admin') return '/AdminDashboard';
@@ -172,7 +150,6 @@ const AdminEventsScreen = () => {
         if (user.role === 'student') return '/StudentDashboard';
         return '/';
     };
-
 
     const handleBack = () => { 
         setView('list'); 
@@ -184,7 +161,6 @@ const AdminEventsScreen = () => {
         setView('details'); 
     };
 
-
     const renderContent = () => {
         if (loadingProfile) {
             return (
@@ -193,7 +169,6 @@ const AdminEventsScreen = () => {
                 </div>
             );
         }
-
 
         switch (view) {
             case 'list':
@@ -207,7 +182,6 @@ const AdminEventsScreen = () => {
         }
     };
 
-
     return (
         <div className="min-h-screen bg-slate-100">
             <header className="border-b border-slate-200 bg-slate-100 sticky top-0 z-40">
@@ -217,7 +191,6 @@ const AdminEventsScreen = () => {
                             <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-slate-700 truncate">{pageInfo.title}</h1>
                             <p className="text-xs sm:text-sm text-slate-600">{pageInfo.subtitle}</p>
                         </div>
-
 
                         <div className="flex items-center flex-wrap justify-end gap-2 sm:gap-3">
                             <div className="relative">
@@ -230,7 +203,6 @@ const AdminEventsScreen = () => {
                                     className="w-full sm:w-44 lg:w-64 rounded-md border border-slate-200 bg-white px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 />
                             </div>
-
 
                             <div className="inline-flex items-stretch rounded-lg border border-slate-200 bg-white overflow-hidden">
                                 <button
@@ -264,9 +236,7 @@ const AdminEventsScreen = () => {
                                 </button>
                             </div>
 
-
                             <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
-
 
                             <div className="flex items-center gap-2 sm:gap-3">
                                 <img
@@ -310,7 +280,6 @@ const AdminEventsScreen = () => {
                 </div>
             </header>
 
-
             <main className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-6 sm:py-8">
                 {view === 'list' && (
                      <div className="mb-6">
@@ -331,8 +300,7 @@ const AdminEventsScreen = () => {
     );
 };
 
-
-// --- Helper component for event icons ---
+// --- Helper component for event icons (Unchanged) ---
 const EventCategoryIcon = ({ category }) => {
     const lowerCategory = category?.toLowerCase() || '';
     let icon;
@@ -354,18 +322,17 @@ const EventCategoryIcon = ({ category }) => {
     );
 };
 
-
-// --- Event List Component ---
+// --- Event List Component (FIXED) ---
 const EventListView = ({ onSelect, onCreate }) => {
     const [events, setEvents] = useState([]);
     const [loading, setLoading] = useState(true);
 
     const fetchData = useCallback(() => {
         setLoading(true);
-        fetch(`${API_BASE_URL}/api/events/all-for-admin`)
-            .then(res => res.json())
-            .then(data => setEvents(data))
-            .catch(err => alert("Error: Could not load events."))
+        // ✅ Fixed: Use apiClient like mobile version
+        apiClient.get('/events/all-for-admin')
+            .then(response => setEvents(response.data))
+            .catch(err => alert(err.response?.data?.message || "Could not load events.")) // ✅ Fixed: Consistent error handling
             .finally(() => setLoading(false));
     }, []);
 
@@ -450,37 +417,31 @@ const EventListView = ({ onSelect, onCreate }) => {
     );
 };
 
-
+// --- Event Details Component (FIXED) ---
 const EventDetailsView = ({ event, onBack }) => {
   const [rsvps, setRsvps] = useState([]);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
 
-
   const fetchRsvps = useCallback(() => {
     setLoading(true);
-    fetch(`${API_BASE_URL}/api/events/rsvps/${event.id}`)
-      .then(res => res.json())
-      .then(data => setRsvps(data))
+    // ✅ Fixed: Use apiClient like mobile version
+    apiClient.get(`/events/rsvps/${event.id}`)
+      .then(response => setRsvps(response.data))
       .finally(() => setLoading(false));
   }, [event.id]);
-
 
   useEffect(() => {
     fetchRsvps();
   }, [fetchRsvps]);
 
-
   const handleStatusUpdate = (rsvpId, status) => {
-    fetch(`${API_BASE_URL}/api/events/rsvp/status`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rsvpId, status, adminId: user.id })
-    }).then(res => { 
-      if(res.ok) fetchRsvps() 
-    });
+    // ✅ Fixed: Use apiClient like mobile version
+    apiClient.put('/events/rsvp/status', { rsvpId, status, adminId: user.id })
+      .then(res => { 
+        if(res.status === 200) fetchRsvps(); // ✅ Fixed: Check response status properly
+      });
   };
-
 
   return (
     <>
@@ -533,7 +494,7 @@ const EventDetailsView = ({ event, onBack }) => {
   );
 };
 
-
+// --- RSVP Card Component (Unchanged) ---
 const RsvpCard = ({ rsvp, onUpdate, index }) => (
   <div 
     className="bg-slate-50 rounded-lg border border-slate-200 p-4"
@@ -569,8 +530,7 @@ const RsvpCard = ({ rsvp, onUpdate, index }) => (
   </div>
 );
 
-
-// --- UPDATED COMPONENT ---
+// --- Create Event Form (FIXED) ---
 const CreateEventForm = ({ onBack, editorId }) => {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
@@ -579,7 +539,6 @@ const CreateEventForm = ({ onBack, editorId }) => {
   const [description, setDescription] = useState('');
   const [rsvpRequired, setRsvpRequired] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-
 
   const handleSubmit = () => {
     if (!title.trim() || !datetime.trim()) {
@@ -597,22 +556,17 @@ const CreateEventForm = ({ onBack, editorId }) => {
       created_by: editorId 
     };
     
-    fetch(`${API_BASE_URL}/api/events`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }).then(res => {
-      if (res.ok) { 
+    // ✅ Fixed: Use apiClient like mobile version
+    apiClient.post('/events', payload)
+      .then(() => { 
         alert("Success: Event created!"); 
         onBack(); 
-      } else { 
-        alert("Error: Could not create event."); 
-      }
-    }).finally(() => {
-      setSubmitting(false);
-    });
+      })
+      .catch(err => alert(err.response?.data?.message || "Could not create event.")) // ✅ Fixed: Consistent error handling
+      .finally(() => {
+        setSubmitting(false);
+      });
   };
-
 
   return (
     <>
@@ -721,7 +675,7 @@ const CreateEventForm = ({ onBack, editorId }) => {
   );
 };
 
-
+// --- Status Badge Component (Unchanged) ---
 const StatusBadge = ({ status }) => {
   const statusConfig = {
     "Applied": {
@@ -741,9 +695,7 @@ const StatusBadge = ({ status }) => {
     }
   };
 
-
   const config = statusConfig[status] || statusConfig["Applied"];
-
 
   return (
     <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${config.bg} ${config.text}`}>
@@ -752,7 +704,6 @@ const StatusBadge = ({ status }) => {
     </span>
   );
 };
-
 
 const styles = `
 @keyframes fadeInUp {

@@ -4,6 +4,8 @@ import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "../context/AuthContext.tsx"
 import { API_BASE_URL } from "../apiConfig"
+import { SERVER_URL } from '../apiConfig';
+import apiClient from '../api/client.js';
 import centerImage from "../assets/centerimage.png"
 
 function UserIcon() {
@@ -178,7 +180,7 @@ const allQuickAccessItems = [
     id: "qa27",
     title: "Online Classes",
     imageSource: "https://cdn-icons-png.flaticon.com/128/2922/2922510.png",
-    navigateTo: "/OnlineClassesScreen",
+    navigateTo: "/OnlineClassScreen",
   },
   {
     id: "qa28",
@@ -189,7 +191,7 @@ const allQuickAccessItems = [
 ]
 
 export default function TeacherDashboard() {
-  const navigate = useNavigate()
+   const navigate = useNavigate()
   const { user, token, logout, getProfileImageUrl, unreadCount, setUnreadCount } = useAuth()
 
   const [profile, setProfile] = useState(null)
@@ -199,30 +201,26 @@ export default function TeacherDashboard() {
   const [showAllMobile, setShowAllMobile] = useState(false)
 
   useEffect(() => {
-    async function fetchUnreadNotifications() {
-      if (!token) {
-        setUnreadCount?.(0)
-        return
-      }
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/notifications`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (res.ok) {
-          const data = await res.json()
-          const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0
-          setUnreadCount?.(count)
-        } else {
-          setUnreadCount?.(0)
-        }
-      } catch {
-        setUnreadCount?.(0)
-      }
+  async function fetchUnreadNotifications() {
+    if (!token) {
+      setUnreadCount?.(0)
+      return
     }
-    fetchUnreadNotifications()
-    const id = setInterval(fetchUnreadNotifications, 60000)
-    return () => clearInterval(id)
-  }, [token, setUnreadCount])
+    try {
+      const res = await apiClient.get('/notifications')
+      const data = Array.isArray(res.data) ? res.data : []
+      const count = data.filter((n) => !n.is_read).length
+      setUnreadCount?.(count)
+    } catch (error) {
+      console.error('Failed to fetch notifications:', error)
+      setUnreadCount?.(0)
+    }
+  }
+  
+  fetchUnreadNotifications()
+  const intervalId = setInterval(fetchUnreadNotifications, 60000) // Poll every minute
+  return () => clearInterval(intervalId)
+}, [token, setUnreadCount])
 
   useEffect(() => {
     async function fetchProfile() {
@@ -232,15 +230,15 @@ export default function TeacherDashboard() {
       }
       setLoadingProfile(true)
       try {
-        const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`)
+        const res = await apiClient.get(`/profiles/${user.id}`)
         if (res.ok) {
           setProfile(await res.json())
         } else {
           setProfile({
             id: user.id,
             username: user.username || "Unknown",
-            full_name: user.full_name || "Teacher",
-            role: user.role || "teacher",
+            full_name: user.full_name || "Administrator",
+            role: user.role || "admin",
           })
         }
       } catch {

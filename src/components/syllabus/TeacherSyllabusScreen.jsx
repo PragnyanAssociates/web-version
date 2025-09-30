@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { API_BASE_URL } from "../../apiConfig";
+// ★★★ 1. IMPORT apiClient AND REMOVE API_BASE_URL ★★★
+import apiClient from '../../api/client';
 import { useAuth } from "../../context/AuthContext.tsx";
 import { useNavigate } from "react-router-dom";
 import {
@@ -71,14 +72,15 @@ const TeacherSyllabusScreen = () => {
         async function fetchUnreadNotifications() {
             if (!token) { setUnreadCount?.(0); return; }
             try {
-                const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res.ok) {
-                    const data = await res.json();
-                    const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                    setLocalUnreadCount(count);
-                    setUnreadCount?.(count);
-                } else { setUnreadCount?.(0); }
-            } catch { setUnreadCount?.(0); }
+                // ★★★ 2. USE apiClient FOR NOTIFICATIONS ★★★
+                const response = await apiClient.get('/notifications');
+                const data = response.data;
+                const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+                setLocalUnreadCount(count);
+                setUnreadCount?.(count);
+            } catch { 
+                setUnreadCount?.(0); 
+            }
         }
         fetchUnreadNotifications();
         const id = setInterval(fetchUnreadNotifications, 60000);
@@ -89,10 +91,17 @@ const TeacherSyllabusScreen = () => {
         async function fetchProfile() {
             if (!user?.id) return;
             try {
-                const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-                if (res.ok) { setProfile(await res.json()); }
-                else { setProfile({ id: user.id, username: user.username || "Unknown", full_name: user.full_name || "User", role: user.role || "user" }); }
-            } catch { setProfile(null); }
+                // ★★★ 3. USE apiClient FOR PROFILE ★★★
+                const response = await apiClient.get(`/profiles/${user.id}`);
+                setProfile(response.data);
+            } catch { 
+                setProfile({ 
+                    id: user.id, 
+                    username: user.username || "Unknown", 
+                    full_name: user.full_name || "User", 
+                    role: user.role || "user" 
+                }); 
+            }
         }
         fetchProfile();
     }, [user]);
@@ -218,11 +227,12 @@ const TeacherSyllabusListScreen = ({ onSelect, selectedClassGroup, selectedSubje
         setIsLoading(true);
         (async () => {
             try {
-                const response = await fetch(`${API_BASE_URL}/api/teacher-assignments/${user.id}`);
-                if (!response.ok) throw new Error("Failed to load your assigned subjects.");
-                setAssignments(await response.json());
+                // ★★★ 4. USE apiClient FOR TEACHER ASSIGNMENTS - MATCHES MOBILE VERSION ★★★
+                const response = await apiClient.get(`/teacher-assignments/${user.id}`);
+                setAssignments(response.data);
             } catch (error) {
-                alert(error.message);
+                // ★★★ 5. MATCH MOBILE ERROR HANDLING ★★★
+                alert(error.response?.data?.message || "Failed to load your assigned subjects.");
             } finally {
                 setIsLoading(false);
             }
@@ -281,15 +291,12 @@ const TeacherLessonProgressScreen = ({ classGroup, subjectName }) => {
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         try {
-            const syllabusResponse = await fetch(`${API_BASE_URL}/api/syllabus/teacher/${classGroup}/${subjectName}`);
-            if (!syllabusResponse.ok) {
-                if (syllabusResponse.status === 404) throw new Error("Syllabus has not been created for this subject yet.");
-                throw new Error("Failed to load syllabus data.");
-            }
-            const syllabusData = await syllabusResponse.json();
-            const progressResponse = await fetch(`${API_BASE_URL}/api/syllabus/class-progress/${syllabusData.id}`);
-            if (!progressResponse.ok) throw new Error("Could not load lesson progress.");
-            const progressData = await progressResponse.json();
+            // ★★★ 6. USE apiClient FOR ALL FETCH CALLS - MATCHES MOBILE VERSION ★★★
+            const syllabusResponse = await apiClient.get(`/syllabus/teacher/${classGroup}/${subjectName}`);
+            const syllabusData = syllabusResponse.data;
+            
+            const progressResponse = await apiClient.get(`/syllabus/class-progress/${syllabusData.id}`);
+            const progressData = progressResponse.data;
 
             const newOverview = { completed: 0, missed: 0, pending: 0, total: progressData.length };
             progressData.forEach(lesson => {
@@ -301,7 +308,11 @@ const TeacherLessonProgressScreen = ({ classGroup, subjectName }) => {
             const lessonsWithStatus = progressData.map(p => ({ ...p, id: p.lesson_id }));
             setSyllabus({ ...syllabusData, lessons: lessonsWithStatus });
         } catch (error) {
-            alert(error.message);
+            // ★★★ 7. MATCH MOBILE ERROR HANDLING PATTERNS ★★★
+            const message = error.response?.status === 404
+                ? "Syllabus has not been created for this subject yet."
+                : error.response?.data?.message || "Failed to load data.";
+            alert(message);
             setSyllabus(null);
         } finally {
             setIsLoading(false);
@@ -319,17 +330,18 @@ const TeacherLessonProgressScreen = ({ classGroup, subjectName }) => {
 
         (async () => {
             try {
-                const response = await fetch(`${API_BASE_URL}/api/syllabus/lesson-status`, {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ class_group: classGroup, lesson_id: lessonId, status: newStatus, teacher_id: teacher.id }),
+                // ★★★ 8. USE apiClient FOR STATUS UPDATES - MATCHES MOBILE VERSION ★★★
+                const response = await apiClient.patch('/syllabus/lesson-status', {
+                    class_group: classGroup,
+                    lesson_id: lessonId,
+                    status: newStatus,
+                    teacher_id: teacher.id
                 });
-                const resData = await response.json();
-                if (!response.ok) throw new Error(resData.message || "Failed to update status.");
-                alert(resData.message);
+                alert(response.data.message);
                 fetchData();
             } catch (error) {
-                alert(error.message);
+                // ★★★ 9. MATCH MOBILE ERROR HANDLING ★★★
+                alert(error.response?.data?.message || "Failed to update status.");
             }
         })();
     };

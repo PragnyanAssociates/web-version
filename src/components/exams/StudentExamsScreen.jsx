@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from "react-router-dom";
 import { useAuth } from '../../context/AuthContext.tsx';
-import { API_BASE_URL } from '../../apiConfig';
+// ★★★ 1. IMPORT apiClient AND REMOVE API_BASE_URL ★★★
+import apiClient from '../../api/client';
 import {
     MdPlayArrow,
     MdHelpOutline,
@@ -82,7 +83,6 @@ const CustomRadioButton = ({ label, value, selectedValue, onSelect }) => {
     );
 };
 
-
 // ✅ Main Router
 const StudentExamsScreen = () => {
     const { user, token, logout, getProfileImageUrl, setUnreadCount } = useAuth();
@@ -116,15 +116,12 @@ const StudentExamsScreen = () => {
         async function fetchUnreadNotifications() {
             if (!token) { setUnreadCount?.(0); return; }
             try {
-                const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res.ok) {
-                    const data = await res.json();
-                    const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                    setLocalUnreadCount(count);
-                    setUnreadCount?.(count);
-                } else {
-                    setUnreadCount?.(0);
-                }
+                // ★★★ 2. USE apiClient FOR NOTIFICATIONS ★★★
+                const response = await apiClient.get('/notifications');
+                const data = response.data;
+                const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+                setLocalUnreadCount(count);
+                setUnreadCount?.(count);
             } catch {
                 setUnreadCount?.(0);
             }
@@ -139,19 +136,16 @@ const StudentExamsScreen = () => {
             if (!user?.id) { setLoadingProfile(false); return; }
             setLoadingProfile(true);
             try {
-                const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-                if (res.ok) {
-                    setProfile(await res.json());
-                } else {
-                    setProfile({
-                        id: user.id,
-                        username: user.username || "Unknown",
-                        full_name: user.full_name || "User",
-                        role: user.role || "user",
-                    });
-                }
+                // ★★★ 3. USE apiClient FOR PROFILE ★★★
+                const response = await apiClient.get(`/profiles/${user.id}`);
+                setProfile(response.data);
             } catch {
-                setProfile(null);
+                setProfile({
+                    id: user.id,
+                    username: user.username || "Unknown",
+                    full_name: user.full_name || "User",
+                    role: user.role || "user",
+                });
             } finally {
                 setLoadingProfile(false);
             }
@@ -308,11 +302,12 @@ const ExamList = ({ onStartExam, onViewResult }) => {
         if (!user?.id || !user.class_group) return;
         setIsLoading(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/exams/student/${user.id}/${user.class_group}`);
-            if (!res.ok) throw new Error('Failed to fetch exams.');
-            setExams(await res.json());
-        } catch (e) {
-            alert(e.message);
+            // ★★★ 4. USE apiClient FOR EXAMS - MATCHES MOBILE VERSION ★★★
+            const response = await apiClient.get(`/exams/student/${user.id}/${user.class_group}`);
+            setExams(response.data);
+        } catch (error) {
+            // ★★★ 5. MATCH MOBILE ERROR HANDLING ★★★
+            alert(error.response?.data?.message || 'Failed to fetch exams.');
         } finally {
             setIsLoading(false);
         }
@@ -436,21 +431,21 @@ const TakeExamView = ({ exam, onFinish }) => {
     useEffect(() => {
         const startAndFetch = async () => {
             try {
-                const startRes = await fetch(`${API_BASE_URL}/api/exams/${exam.exam_id}/start`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ student_id: user.id })
-                });
-                if (!startRes.ok) throw new Error('Could not start exam.');
-                const { attempt_id } = await startRes.json();
+                // ★★★ 6. USE apiClient FOR EXAM START - MATCHES MOBILE VERSION ★★★
+                const startRes = await apiClient.post(`/exams/${exam.exam_id}/start`, { student_id: user.id });
+                const { attempt_id } = startRes.data;
                 setAttemptId(attempt_id);
 
-                const qRes = await fetch(`${API_BASE_URL}/api/exams/take/${exam.exam_id}`);
-                const qData = await qRes.json();
-                const parsed = qData.map(q => ({ ...q, options: typeof q.options === 'string' ? JSON.parse(q.options) : q.options }));
+                // ★★★ 7. USE apiClient FOR QUESTIONS ★★★
+                const qRes = await apiClient.get(`/exams/take/${exam.exam_id}`);
+                const parsed = qRes.data.map(q => ({ 
+                    ...q, 
+                    options: typeof q.options === 'string' ? JSON.parse(q.options) : q.options 
+                }));
                 setQuestions(parsed);
-            } catch (e) {
-                alert(e.message);
+            } catch (error) {
+                // ★★★ 8. MATCH MOBILE ERROR HANDLING ★★★
+                alert(error.response?.data?.message || 'Could not start exam.');
                 onFinish();
             } finally {
                 setIsLoading(false);
@@ -473,16 +468,13 @@ const TakeExamView = ({ exam, onFinish }) => {
 
         setIsSubmitting(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/attempts/${attemptId}/submit`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ answers, student_id: user.id })
-            });
-            if (!res.ok) throw new Error((await res.json()).message);
+            // ★★★ 9. USE apiClient FOR SUBMISSION - MATCHES MOBILE VERSION ★★★
+            await apiClient.post(`/attempts/${attemptId}/submit`, { answers, student_id: user.id });
             alert('Your exam has been submitted successfully!');
             onFinish();
-        } catch (e) {
-            alert(e.message);
+        } catch (error) {
+            // ★★★ 10. MATCH MOBILE ERROR HANDLING ★★★
+            alert(error.response?.data?.message || error.message);
         } finally {
             setIsSubmitting(false);
         }
@@ -605,15 +597,19 @@ const ResultView = ({ attemptId, onBack }) => {
     useEffect(() => {
         const fetchResult = async () => {
             try {
-                const res = await fetch(`${API_BASE_URL}/api/attempts/${attemptId}/result?student_id=${user.id}`);
-                if (!res.ok) throw new Error('Could not fetch results.');
-                const data = await res.json();
+                // ★★★ 11. USE apiClient FOR RESULTS - MATCHES MOBILE VERSION ★★★
+                const response = await apiClient.get(`/attempts/${attemptId}/result?student_id=${user.id}`);
+                const data = response.data;
                 if (data.details) {
-                    data.details = data.details.map(item => ({ ...item, options: typeof item.options === 'string' ? JSON.parse(item.options) : item.options }));
+                    data.details = data.details.map(item => ({ 
+                        ...item, 
+                        options: typeof item.options === 'string' ? JSON.parse(item.options) : item.options 
+                    }));
                 }
                 setResult(data);
-            } catch (e) {
-                alert(e.message);
+            } catch (error) {
+                // ★★★ 12. MATCH MOBILE ERROR HANDLING ★★★
+                alert(error.response?.data?.message || 'Could not fetch results.');
                 onBack();
             } finally {
                 setIsLoading(false);

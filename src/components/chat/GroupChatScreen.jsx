@@ -1,14 +1,14 @@
 "use client"
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-// useNavigate is replaced with direct window navigation to avoid router context errors
 import { useAuth } from '../../context/AuthContext.tsx';
-import { API_BASE_URL } from '../../apiConfig';
+import { SERVER_URL } from '../../apiConfig'; // ★★★ FIXED: Use SERVER_URL like mobile
+import apiClient from '../../api/client.js'; // ★★★ FIXED: Use apiClient like mobile
 import { io } from 'socket.io-client';
 import EmojiPicker from 'emoji-picker-react';
-import { MdChat, MdSend, MdAttachFile, MdEmojiEmotions, MdClose, MdPerson, MdOnlinePrediction, MdArrowBack } from 'react-icons/md'; // +++ ADDED MdArrowBack +++
+import { MdChat, MdSend, MdAttachFile, MdEmojiEmotions, MdClose, MdPerson, MdOnlinePrediction, MdArrowBack } from 'react-icons/md';
 
-// --- Icon Components for Header ---
+// --- Icon Components for Header (Keep existing) ---
 function UserIcon() {
   return (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
@@ -49,6 +49,41 @@ function BellIcon() {
     </svg>
   );
 }
+function ProfileAvatar() {
+  const { getProfileImageUrl } = useAuth()
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  
+  const hasValidImage = getProfileImageUrl() && !imageError && imageLoaded
+  
+  return (
+    <div className="relative w-7 h-7 sm:w-9 sm:h-9">
+      {/* Always render the user placeholder */}
+      <div className={`absolute inset-0 rounded-full bg-gray-100 flex items-center justify-center border-2 border-slate-400 transition-opacity duration-200 ${hasValidImage ? 'opacity-0' : 'opacity-100'}`}>
+        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
+        </svg>
+      </div>
+      
+      {/* Profile image overlay */}
+      {getProfileImageUrl() && (
+        <img 
+          src={getProfileImageUrl()} 
+          alt="Profile" 
+          className={`absolute inset-0 w-full h-full rounded-full border border-slate-200 object-cover transition-opacity duration-200 ${hasValidImage ? 'opacity-100' : 'opacity-0'}`}
+          onError={() => {
+            setImageError(true)
+            setImageLoaded(false)
+          }}
+          onLoad={() => {
+            setImageError(false)
+            setImageLoaded(true)
+          }}
+        />
+      )}
+    </div>
+  )
+} 
 
 const GroupChatScreen = () => {
     const { user, token, logout, getProfileImageUrl, setUnreadCount } = useAuth();
@@ -71,51 +106,63 @@ const GroupChatScreen = () => {
     const messagesEndRef = useRef(null);
     const fileInputRef = useRef(null);
 
-    // --- Hooks for Header Functionality ---
+    // ★★★ FIXED: Use apiClient for notifications like mobile ★★★
     useEffect(() => {
         async function fetchUnreadNotifications() {
-        if (!token) { setUnreadCount?.(0); return; }
-        try {
-            const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-            if (res.ok) {
-            const data = await res.json();
-            const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-            setLocalUnreadCount(count);
-            setUnreadCount?.(count);
-            } else { setUnreadCount?.(0); }
-        } catch { setUnreadCount?.(0); }
+            if (!token) { 
+                setUnreadCount?.(0); 
+                return; 
+            }
+            try {
+                const res = await apiClient.get('/notifications');
+                const count = Array.isArray(res.data) ? res.data.filter((n) => !n.is_read).length : 0;
+                setLocalUnreadCount(count);
+                setUnreadCount?.(count);
+            } catch (error) {
+                console.error('Error fetching notifications:', error);
+                setUnreadCount?.(0);
+            }
         }
         fetchUnreadNotifications();
         const id = setInterval(fetchUnreadNotifications, 60000);
         return () => clearInterval(id);
     }, [token, setUnreadCount]);
 
+    // ★★★ FIXED: Use apiClient for profile like mobile ★★★
     useEffect(() => {
         async function fetchProfile() {
-        if (!user?.id) { setLoadingProfile(false); return; }
-        setLoadingProfile(true);
-        try {
-            const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-            if (res.ok) {
-            setProfile(await res.json());
-            } else {
-            setProfile({ id: user.id, username: user.username || "Unknown", full_name: user.full_name || "User", role: user.role || "user" });
+            if (!user?.id) { 
+                setLoadingProfile(false); 
+                return; 
             }
-        } catch { setProfile(null); }
-        finally { setLoadingProfile(false); }
+            setLoadingProfile(true);
+            try {
+                const res = await apiClient.get(`/profiles/${user.id}`);
+                setProfile(res.data);
+            } catch (error) {
+                console.error('Error fetching profile:', error);
+                setProfile({ 
+                    id: user.id, 
+                    username: user.username || "Unknown", 
+                    full_name: user.full_name || "User", 
+                    role: user.role || "user" 
+                });
+            } finally { 
+                setLoadingProfile(false); 
+            }
         }
         fetchProfile();
     }, [user]);
 
-    // --- Hooks for Chat Functionality ---
+    // ★★★ FIXED: Chat functionality to match mobile exactly ★★★
     useEffect(() => {
         const fetchHistory = async () => {
             try {
-                const response = await fetch(`${API_BASE_URL}/api/group-chat/history`);
-                if (!response.ok) throw new Error('Failed to fetch history');
-                const history = await response.json();
-                setMessages(history);
+                // ★★★ FIXED: Use apiClient like mobile ★★★
+                const response = await apiClient.get('/group-chat/history');
+                setMessages(response.data);
             } catch (error) {
+                console.error('Error fetching chat history:', error);
                 alert("Error: Could not load chat history.");
             } finally {
                 setLoading(false);
@@ -123,9 +170,11 @@ const GroupChatScreen = () => {
         };
 
         fetchHistory();
-        socketRef.current = io(API_BASE_URL);
+        // ★★★ FIXED: Use SERVER_URL like mobile ★★★
+        socketRef.current = io(SERVER_URL);
         
         socketRef.current.on('connect', () => {
+            console.log('Connected to chat server');
             setIsOnline(true);
         });
         
@@ -164,6 +213,7 @@ const GroupChatScreen = () => {
         return '/';
     };
 
+    // ★★★ FIXED: Match mobile sendMessage exactly ★★★
     const sendMessage = (type, text, url) => {
         if (!user || !socketRef.current) return;
         
@@ -197,6 +247,7 @@ const GroupChatScreen = () => {
         sendMessage('text', newMessage.trim(), null);
     };
 
+    // ★★★ FIXED: File upload to match mobile pattern ★★★
     const handleFileChange = async (event) => {
         const file = event.target.files[0];
         if (!file) return;
@@ -204,19 +255,20 @@ const GroupChatScreen = () => {
             alert("Error: Please select an image file.");
             return;
         }
+        
         setIsUploading(true);
         const formData = new FormData();
         formData.append('media', file);
+        
         try {
-            const res = await fetch(`${API_BASE_URL}/api/group-chat/upload-media`, {
-                method: 'POST',
-                body: formData,
+            // ★★★ FIXED: Use apiClient like mobile ★★★
+            const res = await apiClient.post('/group-chat/upload-media', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
             });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Upload failed');
-            sendMessage('image', null, data.fileUrl);
+            sendMessage('image', null, res.data.fileUrl);
         } catch (error) {
-            alert("Upload Failed: " + (error.message || 'An unknown error occurred.'));
+            console.error('Upload error:', error);
+            alert("Upload Failed: " + (error.response?.data?.message || 'An unknown error occurred.'));
         } finally {
             setIsUploading(false);
             event.target.value = '';
@@ -230,15 +282,40 @@ const GroupChatScreen = () => {
         }
     };
 
+    // ★★★ FIXED: Message rendering to match mobile ★★★
     const renderMessageItem = (item) => {
         if (!user) return null;
         const isMyMessage = item.user_id === parseInt(user.id, 10);
-        const messageTime = new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+        const messageTime = new Date(item.timestamp).toLocaleTimeString([], { 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            hour12: true 
+        });
+
+        const getRoleColor = (role) => {
+            switch (role) {
+                case 'admin': return '#d9534f';
+                case 'teacher': return '#5cb85c';
+                case 'student': return '#0275d8';
+                default: return '#86909c';
+            }
+        };
 
         const renderContent = () => {
             switch (item.message_type) {
                 case 'image':
-                    return <img src={`${API_BASE_URL}${item.file_url}`} alt="Shared content" className="w-64 h-auto rounded-lg object-cover border border-slate-200" loading="lazy" />;
+                    return (
+                        <img 
+                            src={`${SERVER_URL}${item.file_url}`} // ★★★ FIXED: Use SERVER_URL like mobile ★★★
+                            alt="Shared content" 
+                            className="w-64 h-auto max-h-64 rounded-lg object-cover border border-slate-200" 
+                            loading="lazy" 
+                            onError={(e) => {
+                                console.error('Image failed to load:', `${SERVER_URL}${item.file_url}`);
+                                e.currentTarget.src = '/placeholder-image.png';
+                            }}
+                        />
+                    );
                 case 'text':
                 default:
                     return <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{item.message_text}</p>;
@@ -248,18 +325,37 @@ const GroupChatScreen = () => {
         return (
             <div key={item.id} className={`flex items-end mb-4 ${isMyMessage ? 'justify-end' : 'justify-start'}`}>
                 <div className={`flex flex-col max-w-xs md:max-w-md ${isMyMessage ? 'items-end' : 'items-start'}`}>
-                    {!isMyMessage && <span className="text-xs text-slate-500 mb-1 ml-2">{item.full_name}</span>}
-                    <div className={`px-4 py-3 rounded-2xl ${isMyMessage ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white text-slate-800 rounded-bl-none border border-slate-200'}`}>
+                    {!isMyMessage && (
+                        <span 
+                            className="text-xs font-medium mb-1 ml-2" 
+                            style={{ color: getRoleColor(item.role) }}
+                        >
+                            {item.full_name} ({item.role})
+                        </span>
+                    )}
+                    <div className={`px-4 py-3 rounded-2xl ${
+                        isMyMessage 
+                            ? 'bg-blue-600 text-white rounded-br-none' 
+                            : 'bg-white text-slate-800 rounded-bl-none border border-slate-200'
+                    } ${item.message_type === 'image' ? 'p-1 bg-transparent' : ''}`}>
                         {renderContent()}
                     </div>
-                    <span className={`text-xs mt-1 ${isMyMessage ? 'text-slate-400 mr-2' : 'text-slate-400 ml-2'}`}>{messageTime}</span>
+                    <span className={`text-xs mt-1 ${
+                        isMyMessage ? 'text-slate-400 mr-2' : 'text-slate-400 ml-2'
+                    }`}>
+                        {messageTime}
+                    </span>
                 </div>
             </div>
         );
     };
 
     if (loading || loadingProfile) {
-        return <div className="min-h-screen bg-slate-100 flex items-center justify-center"><div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>;
+        return (
+            <div className="min-h-screen bg-slate-100 flex items-center justify-center">
+                <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        );
     }
 
     return (
@@ -273,26 +369,50 @@ const GroupChatScreen = () => {
                         </div>
                         <div className="flex items-center flex-wrap justify-end gap-2 sm:gap-3">
                             <div className="relative">
-                                <input id="module-search" type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search messages..." className="w-full sm:w-44 lg:w-64 rounded-md border border-slate-200 bg-white px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                                <input 
+                                    id="module-search" 
+                                    type="text" 
+                                    value={query} 
+                                    onChange={(e) => setQuery(e.target.value)} 
+                                    placeholder="Search messages..." 
+                                    className="w-full sm:w-44 lg:w-64 rounded-md border border-slate-200 bg-white px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                                />
                             </div>
                             <div className="inline-flex items-stretch rounded-lg border border-slate-200 bg-white overflow-hidden">
-                                <button onClick={() => window.location.href = getDefaultDashboardRoute()} className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition" type="button" title="Home"><HomeIcon /><span className="hidden md:inline">Home</span></button>
+                                <button onClick={() => window.location.href = getDefaultDashboardRoute()} className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition" type="button" title="Home">
+                                    <HomeIcon />
+                                    <span className="hidden md:inline">Home</span>
+                                </button>
                                 <div className="w-px bg-slate-200" aria-hidden="true" />
-                                <button onClick={() => window.location.href = "/AcademicCalendar"} className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition" type="button" title="Calendar"><CalendarIcon /><span className="hidden md:inline">Calendar</span></button>
+                                <button onClick={() => window.location.href = "/AcademicCalendar"} className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition" type="button" title="Calendar">
+                                    <CalendarIcon />
+                                    <span className="hidden md:inline">Calendar</span>
+                                </button>
                                 <div className="w-px bg-slate-200" aria-hidden="true" />
-                                <button onClick={() => window.location.href = "/ProfileScreen"} className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition" type="button" title="Profile"><UserIcon /><span className="hidden md:inline">Profile</span></button>
+                                <button onClick={() => window.location.href = "/ProfileScreen"} className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition" type="button" title="Profile">
+                                    <UserIcon />
+                                    <span className="hidden md:inline">Profile</span>
+                                </button>
                             </div>
                             <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
                             <div className="flex items-center gap-2 sm:gap-3">
-                                <img src={getProfileImageUrl() || "/placeholder.svg"} alt="Profile" className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover" onError={(e) => { e.currentTarget.src = "/assets/profile.png" }} />
+                               
+<ProfileAvatar />
                                 <div className="hidden sm:flex flex-col">
                                     <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">{profile?.full_name || profile?.username || "User"}</span>
                                     <span className="text-xs text-slate-600 capitalize">{profile?.role || ""}</span>
                                 </div>
-                                <button onClick={handleLogout} className="inline-flex items-center rounded-md bg-blue-600 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><span className="hidden sm:inline">Logout</span><span className="sm:hidden">Exit</span></button>
+                                <button onClick={handleLogout} className="inline-flex items-center rounded-md bg-blue-600 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                                    <span className="hidden sm:inline">Logout</span>
+                                    <span className="sm:hidden">Exit</span>
+                                </button>
                                 <button onClick={() => window.location.href = "/NotificationsScreen"} className="relative inline-flex items-center justify-center rounded-full border border-slate-200 bg-white p-1.5 sm:p-2 text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="Notifications" title="Notifications" type="button">
                                     <BellIcon />
-                                    {unreadCount > 0 && (<span className="absolute -top-0.5 sm:-top-1 -right-0.5 sm:-right-1 px-1 sm:px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-white bg-red-600 rounded-full min-w-[16px] sm:min-w-[18px]">{unreadCount > 99 ? "99+" : unreadCount}</span>)}
+                                    {unreadCount > 0 && (
+                                        <span className="absolute -top-0.5 sm:-top-1 -right-0.5 sm:-right-1 px-1 sm:px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-white bg-red-600 rounded-full min-w-[16px] sm:min-w-[18px]">
+                                            {unreadCount > 99 ? "99+" : unreadCount}
+                                        </span>
+                                    )}
                                 </button>
                             </div>
                         </div>
@@ -301,7 +421,6 @@ const GroupChatScreen = () => {
             </header>
 
             <main className="flex-1 flex flex-col max-w-7xl w-full mx-auto p-4">
-                {/* +++ ADDED THIS BACK BUTTON +++ */}
                 <div className="mb-4">
                     <button
                         onClick={() => window.location.href = getDefaultDashboardRoute()}
@@ -312,6 +431,7 @@ const GroupChatScreen = () => {
                         <span>Back to Dashboard</span>
                     </button>
                 </div>
+                
                 <div className="flex-1 flex flex-col overflow-hidden bg-white rounded-2xl shadow-lg border border-slate-200">
                     <div className="p-3 border-b border-slate-200 flex items-center justify-between bg-slate-50">
                         <h2 className="font-bold text-slate-700">Live Discussion</h2>
@@ -322,10 +442,12 @@ const GroupChatScreen = () => {
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-4 bg-slate-50" onClick={() => setIsEmojiPickerOpen(false)}>
-                        {messages.length > 0 ? messages.map(renderMessageItem) : (
-                             <div className="flex items-center justify-center h-full text-center text-slate-400">
-                                 <p>No messages yet. Start the conversation!</p>
-                             </div>
+                        {messages.length > 0 ? (
+                            messages.map(renderMessageItem)
+                        ) : (
+                            <div className="flex items-center justify-center h-full text-center text-slate-400">
+                                <p>No messages yet. Start the conversation!</p>
+                            </div>
                         )}
                         <div ref={messagesEndRef} />
                     </div>
@@ -333,15 +455,34 @@ const GroupChatScreen = () => {
                     <div className="p-4 border-t border-slate-200 bg-white relative">
                         {isEmojiPickerOpen && (
                             <div className="absolute bottom-full right-0 mb-2 z-10">
-                                <EmojiPicker onEmojiClick={(emojiData) => setNewMessage(prev => prev + emojiData.emoji)} />
+                                <EmojiPicker 
+                                    onEmojiClick={(emojiData) => setNewMessage(prev => prev + emojiData.emoji)} 
+                                />
                             </div>
                         )}
                         <div className="flex items-center gap-2">
-                            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
-                            <button onClick={() => fileInputRef.current.click()} disabled={isUploading} className="p-2 text-slate-500 hover:text-blue-600 rounded-full hover:bg-slate-200 transition-colors">
-                                {isUploading ? <div className="w-5 h-5 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin"></div> : <MdAttachFile size={22} />}
+                            <input 
+                                ref={fileInputRef} 
+                                type="file" 
+                                accept="image/*" 
+                                onChange={handleFileChange} 
+                                className="hidden" 
+                            />
+                            <button 
+                                onClick={() => fileInputRef.current.click()} 
+                                disabled={isUploading} 
+                                className="p-2 text-slate-500 hover:text-blue-600 rounded-full hover:bg-slate-200 transition-colors"
+                            >
+                                {isUploading ? (
+                                    <div className="w-5 h-5 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin"></div>
+                                ) : (
+                                    <MdAttachFile size={22} />
+                                )}
                             </button>
-                            <button onClick={() => setIsEmojiPickerOpen(prev => !prev)} className="p-2 text-slate-500 hover:text-blue-600 rounded-full hover:bg-slate-200 transition-colors">
+                            <button 
+                                onClick={() => setIsEmojiPickerOpen(prev => !prev)} 
+                                className="p-2 text-slate-500 hover:text-blue-600 rounded-full hover:bg-slate-200 transition-colors"
+                            >
                                 <MdEmojiEmotions size={22} />
                             </button>
                             <textarea
@@ -352,7 +493,11 @@ const GroupChatScreen = () => {
                                 rows="1"
                                 className="flex-1 bg-slate-100 border border-slate-300 rounded-lg px-4 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
-                            <button onClick={handleSendText} disabled={!newMessage.trim()} className="p-3 bg-blue-600 text-white rounded-lg disabled:bg-slate-300 transition-colors">
+                            <button 
+                                onClick={handleSendText} 
+                                disabled={!newMessage.trim()} 
+                                className="p-3 bg-blue-600 text-white rounded-lg disabled:bg-slate-300 transition-colors"
+                            >
                                 <MdSend size={20} />
                             </button>
                         </div>

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from "react-router-dom";
 import { useAuth } from '../../context/AuthContext.tsx';
-import { API_BASE_URL } from '../../apiConfig';
+import { SERVER_URL } from '../../apiConfig';
 import { FaEdit, FaTrash, FaPlus, FaPaperclip, FaArrowLeft, FaCloudDownloadAlt, FaStar, FaEye } from 'react-icons/fa';
 import { AiOutlineLoading3Quarters } from 'react-icons/ai';
 import { MdSchool, MdAssignment, MdGrade } from 'react-icons/md';
+import apiClient from '../../api/client';
 
 // --- Icon Components for Header ---
 function UserIcon() {
@@ -32,14 +33,14 @@ const AppHeader = ({ title, subtitle }) => {
         async function fetchUnreadNotifications() {
             if (!token) return;
             try {
-                const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-                if (res.ok) {
-                    const data = await res.json();
-                    const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                    setLocalUnreadCount(count);
-                    if (setUnreadCount) setUnreadCount(count);
-                }
-            } catch (error) { console.error("Failed to fetch notifications count", error); }
+                // ★★★ FIXED: Use apiClient like mobile version ★★★
+                const res = await apiClient.get('/notifications');
+                const count = Array.isArray(res.data) ? res.data.filter((n) => !n.is_read).length : 0;
+                setLocalUnreadCount(count);
+                if (setUnreadCount) setUnreadCount(count);
+            } catch (error) { 
+                console.error("Failed to fetch notifications count", error); 
+            }
         }
         fetchUnreadNotifications();
         const id = setInterval(fetchUnreadNotifications, 60000);
@@ -50,8 +51,9 @@ const AppHeader = ({ title, subtitle }) => {
         async function fetchProfile() {
             if (!user?.id) return;
             try {
-                const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-                setProfile(res.ok ? await res.json() : { full_name: user.full_name || "User", role: user.role || "user" });
+                // ★★★ FIXED: Use apiClient like mobile version ★★★
+                const res = await apiClient.get(`/profiles/${user.id}`);
+                setProfile(res.data);
             } catch (error) {
                 console.error("Failed to fetch profile", error);
                 setProfile({ full_name: user.full_name || "User", role: user.role || "user" });
@@ -157,7 +159,8 @@ const AssignmentList = ({ onSelectAssignment }) => {
     const [subjects, setSubjects] = useState([]);
     const [selectedClass, setSelectedClass] = useState('');
     const [selectedSubject, setSelectedSubject] = useState('');
-    const [newAssignment, setNewAssignment] = useState({ title: '', description: '', due_date: '' });
+    const initialAssignmentState = { title: '', description: '', due_date: '' };
+    const [newAssignment, setNewAssignment] = useState(initialAssignmentState);
     const [attachment, setAttachment] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
 
@@ -175,97 +178,125 @@ const AssignmentList = ({ onSelectAssignment }) => {
         if (!user) return;
         setIsLoading(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/homework/teacher/${user.id}`);
-            if (!res.ok) throw new Error("Failed to fetch assignments.");
-            setAssignments(await res.json());
-        } catch (e) { alert(e.message); } 
-        finally { setIsLoading(false); }
+            // ★★★ FIXED: Use apiClient like mobile version ★★★
+            const response = await apiClient.get(`/homework/teacher/${user.id}`);
+            setAssignments(response.data);
+        } catch (e) { 
+            alert(`Error: ${e.response?.data?.message || "Failed to fetch assignment history."}`); 
+        } finally { 
+            setIsLoading(false); 
+        }
     }, [user]);
 
-    useEffect(() => {
-        const fetchInitialData = async () => {
-            await fetchTeacherAssignments();
-            try {
-                const res = await fetch(`${API_BASE_URL}/api/student-classes`);
-                if (res.ok) setStudentClasses(await res.json());
-            } catch (e) { console.error("Error fetching student classes:", e); }
-        };
-        fetchInitialData();
+    const fetchStudentClasses = async () => { 
+        try { 
+            // ★★★ FIXED: Use apiClient like mobile version ★★★
+            const response = await apiClient.get('/student-classes'); 
+            setStudentClasses(response.data); 
+        } catch (e) { 
+            console.error("Error fetching student classes:", e); 
+        } 
+    };
+
+    useEffect(() => { 
+        fetchTeacherAssignments(); 
+        fetchStudentClasses(); 
     }, [fetchTeacherAssignments]);
 
     const handleClassChange = async (classGroup) => {
-        setSelectedClass(classGroup);
+        setSelectedClass(classGroup); 
+        setSubjects([]); 
         setSelectedSubject('');
         if (classGroup) {
             try {
-                const res = await fetch(`${API_BASE_URL}/api/subjects-for-class/${classGroup}`);
-                const data = await res.json();
-                setSubjects(data);
+                // ★★★ FIXED: Use apiClient like mobile version ★★★
+                const response = await apiClient.get(`/subjects-for-class/${classGroup}`);
+                const data = response.data;
+                setSubjects(data); 
                 return data;
-            } catch (e) { console.error(e); setSubjects([]); return []; }
-        }
-        setSubjects([]);
+            } catch (e) { 
+                console.error(e); 
+                return []; 
+            }
+        } 
         return [];
     };
 
-    const openModal = async (assignment = null) => {
-        setIsSaving(false);
-        if (assignment) {
-            setEditingAssignment(assignment);
-            const date = new Date(assignment.due_date).toISOString().split('T')[0];
-            setNewAssignment({ title: assignment.title, description: assignment.description, due_date: date });
-            setAttachment(assignment.attachment_path ? { name: assignment.attachment_path.split('/').pop() } : null);
-            const fetchedSubjects = await handleClassChange(assignment.class_group);
-            if (fetchedSubjects.includes(assignment.subject)) setSelectedSubject(assignment.subject);
-        } else {
-            setEditingAssignment(null);
-            setNewAssignment({ title: '', description: '', due_date: '' });
-            setAttachment(null);
-            setSelectedClass('');
-            setSelectedSubject('');
-            setSubjects([]);
-        }
+    const openCreateModal = () => { 
+        setEditingAssignment(null); 
+        setNewAssignment(initialAssignmentState); 
+        setSelectedClass(''); 
+        setSelectedSubject(''); 
+        setSubjects([]); 
+        setAttachment(null); 
+        setIsModalVisible(true); 
+    };
+
+    const openEditModal = async (assignment) => {
+        setEditingAssignment(assignment);
+        const date = new Date(assignment.due_date);
+        const formattedDate = date.toISOString().split('T')[0];
+        setNewAssignment({ title: assignment.title, description: assignment.description, due_date: formattedDate });
+        setAttachment(assignment.attachment_path ? { name: assignment.attachment_path.split('/').pop() } : null);
+        const fetchedSubjects = await handleClassChange(assignment.class_group);
+        if (fetchedSubjects.includes(assignment.subject)) { setSelectedSubject(assignment.subject); }
         setIsModalVisible(true);
     };
 
-    const handleDelete = async (assignment) => {
-        if (!window.confirm(`Delete "${assignment.title}"? This cannot be undone.`)) return;
-        try {
-            const res = await fetch(`${API_BASE_URL}/api/homework/${assignment.id}`, { method: 'DELETE' });
-            if (!res.ok) throw new Error('Failed to delete assignment.');
-            alert("Assignment deleted.");
-            fetchTeacherAssignments();
-        } catch (e) { alert(e.message); }
+    const handleDelete = (assignment) => {
+        if (window.confirm(`Are you sure you want to delete "${assignment.title}"?`)) {
+            // ★★★ FIXED: Use apiClient like mobile version ★★★
+            apiClient.delete(`/homework/${assignment.id}`)
+                .then(() => {
+                    alert("Success: Assignment deleted.");
+                    fetchTeacherAssignments();
+                })
+                .catch((e) => {
+                    alert(`Error: ${e.response?.data?.message || 'Failed to delete assignment.'}`);
+                });
+        }
     };
 
     const handleSave = async () => {
         if (!user || !selectedClass || !selectedSubject || !newAssignment.title || !newAssignment.due_date) {
-            return alert("Title, Class, Subject, and Due Date are required.");
+            return alert("Validation Error: Title, Class, Subject, and Due Date are required.");
         }
         setIsSaving(true);
+        
         const formData = new FormData();
-        Object.entries(newAssignment).forEach(([key, value]) => formData.append(key, value));
+        formData.append('title', newAssignment.title);
+        formData.append('description', newAssignment.description || '');
+        formData.append('due_date', newAssignment.due_date);
         formData.append('class_group', selectedClass);
         formData.append('subject', selectedSubject);
-
-        if (editingAssignment) {
-            if (attachment?.file) formData.append('attachment', attachment.file);
-            else if (editingAssignment.attachment_path) formData.append('existing_attachment_path', editingAssignment.attachment_path);
-        } else {
-            formData.append('teacher_id', user.id);
-            if (attachment?.file) formData.append('attachment', attachment.file);
+        
+        if (!editingAssignment) { 
+            formData.append('teacher_id', user.id); 
         }
         
-        const url = editingAssignment ? `${API_BASE_URL}/api/homework/${editingAssignment.id}` : `${API_BASE_URL}/api/homework`;
+        // ★★★ FIXED: Handle attachment like mobile version ★★★
+        if (attachment && attachment.file) { 
+            formData.append('attachment', attachment.file); 
+        } else if (editingAssignment && editingAssignment.attachment_path) { 
+            formData.append('existing_attachment_path', editingAssignment.attachment_path); 
+        }
+
         try {
-            const res = await fetch(url, { method: 'POST', body: formData });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.message || "An error occurred.");
-            alert(`Assignment ${editingAssignment ? 'updated' : 'created'} successfully!`);
+            // ★★★ FIXED: Use apiClient like mobile version ★★★
+            if (editingAssignment) {
+                await apiClient.post(`/homework/${editingAssignment.id}`, formData, { 
+                    headers: { 'Content-Type': 'multipart/form-data' } 
+                });
+            } else {
+                await apiClient.post('/homework', formData, { 
+                    headers: { 'Content-Type': 'multipart/form-data' } 
+                });
+            }
+            alert(`Success: Assignment ${editingAssignment ? 'updated' : 'created'}!`);
             setIsModalVisible(false);
             fetchTeacherAssignments();
         } catch (e) {
-            alert(e.message);
+            alert(`Error: ${e.response?.data?.message || "An error occurred."}`);
         } finally {
             setIsSaving(false);
         }
@@ -293,7 +324,7 @@ const AssignmentList = ({ onSelectAssignment }) => {
                     <h2 className="text-xl font-bold text-slate-800">My Assignments</h2>
                     <p className="text-sm text-slate-600">A list of all homework you have created.</p>
                 </div>
-                <button onClick={() => openModal()} className="flex items-center bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg shadow-sm font-semibold transition-all duration-300 transform hover:scale-105 active:scale-95"><FaPlus className="mr-2" />Create Homework</button>
+                <button onClick={openCreateModal} className="flex items-center bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg shadow-sm font-semibold transition-all duration-300 transform hover:scale-105 active:scale-95"><FaPlus className="mr-2" />Create Homework</button>
             </div>
 
             { !assignments.length ? (
@@ -332,7 +363,7 @@ const AssignmentList = ({ onSelectAssignment }) => {
                                                     <FaEye />
                                                     <span>Submissions</span>
                                                 </button>
-                                                <button onClick={() => openModal(item)} className="h-9 w-9 flex items-center justify-center text-slate-500 hover:bg-slate-200 rounded-full transition-colors" title="Edit"><FaEdit /></button>
+                                                <button onClick={() => openEditModal(item)} className="h-9 w-9 flex items-center justify-center text-slate-500 hover:bg-slate-200 rounded-full transition-colors" title="Edit"><FaEdit /></button>
                                                 <button onClick={() => handleDelete(item)} className="h-9 w-9 flex items-center justify-center text-slate-500 hover:text-red-600 hover:bg-red-100 rounded-full transition-colors" title="Delete"><FaTrash /></button>
                                             </div>
                                         </td>
@@ -348,16 +379,16 @@ const AssignmentList = ({ onSelectAssignment }) => {
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4">
                     <div className="bg-white rounded-2xl shadow-2xl border w-full max-w-2xl max-h-[90vh] overflow-y-auto">
                         <div className="p-6 sm:p-8">
-                            <h2 className="text-2xl font-bold text-center mb-6 text-slate-800">{editingAssignment ? 'Edit Assignment' : 'New Assignment'}</h2>
+                            <h2 className="text-2xl font-bold text-center mb-6 text-slate-800">{editingAssignment ? 'Edit Assignment' : 'Create New Assignment'}</h2>
                             <div className="space-y-5">
-                                <div><label className="block text-slate-700 font-semibold mb-2">Class *</label><select value={selectedClass} onChange={e => handleClassChange(e.target.value)} className="w-full border-2 border-slate-200 rounded-xl p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-slate-50 shadow-inner"><option value="">-- Select Class --</option>{studentClasses.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-                                <div><label className="block text-slate-700 font-semibold mb-2">Subject *</label><select value={selectedSubject} onChange={e => setSelectedSubject(e.target.value)} disabled={!subjects.length} className="w-full border-2 border-slate-200 rounded-xl p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-slate-50 shadow-inner disabled:bg-slate-100"><option value="">{subjects.length ? "-- Select Subject --" : "Select a class first"}</option>{subjects.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
-                                <div><label className="block text-slate-700 font-semibold mb-2">Title *</label><input value={newAssignment.title} onChange={e => setNewAssignment({...newAssignment, title: e.target.value})} className="w-full border-2 border-slate-200 rounded-xl p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-slate-50 shadow-inner" /></div>
-                                <div><label className="block text-slate-700 font-semibold mb-2">Description</label><textarea rows="3" value={newAssignment.description} onChange={e => setNewAssignment({...newAssignment, description: e.target.value})} className="w-full border-2 border-slate-200 rounded-xl p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-slate-50 shadow-inner resize-none" /></div>
+                                <div><label className="block text-slate-700 font-semibold mb-2">Class *</label><select value={selectedClass} onChange={e => handleClassChange(e.target.value)} className="w-full border-2 border-slate-200 rounded-xl p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-slate-50 shadow-inner"><option value="">-- Select a class --</option>{studentClasses.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+                                <div><label className="block text-slate-700 font-semibold mb-2">Subject *</label><select value={selectedSubject} onChange={e => setSelectedSubject(e.target.value)} disabled={!subjects.length} className="w-full border-2 border-slate-200 rounded-xl p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-slate-50 shadow-inner disabled:bg-slate-100"><option value="">{subjects.length > 0 ? "-- Select a subject --" : "Select a class first"}</option>{subjects.map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+                                <div><label className="block text-slate-700 font-semibold mb-2">Title *</label><input placeholder="e.g., Chapter 5 Exercise" value={newAssignment.title} onChange={e => setNewAssignment({...newAssignment, title: e.target.value})} className="w-full border-2 border-slate-200 rounded-xl p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-slate-50 shadow-inner" /></div>
+                                <div><label className="block text-slate-700 font-semibold mb-2">Description (Optional)</label><textarea rows="3" placeholder="Instructions for students" value={newAssignment.description} onChange={e => setNewAssignment({...newAssignment, description: e.target.value})} className="w-full border-2 border-slate-200 rounded-xl p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-slate-50 shadow-inner resize-none" /></div>
                                 <div><label className="block text-slate-700 font-semibold mb-2">Due Date *</label><input type="date" value={newAssignment.due_date} onChange={e => setNewAssignment({...newAssignment, due_date: e.target.value})} className="w-full border-2 border-slate-200 rounded-xl p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-slate-50 shadow-inner" /></div>
                                 <div><button onClick={() => document.getElementById('file-input').click()} className="flex items-center bg-slate-100 hover:bg-slate-200 text-slate-800 px-4 py-2 rounded-lg font-semibold transition-all"><FaPaperclip className="mr-2" />Attach File</button><input id="file-input" type="file" className="hidden" onChange={e => e.target.files[0] && setAttachment({ name: e.target.files[0].name, file: e.target.files[0] })} />{attachment && <p className="mt-2 text-sm text-slate-600 bg-slate-50 p-2 rounded-md">Selected: {attachment.name}</p>}</div>
                             </div>
-                            <div className="flex justify-end gap-4 mt-8 pt-6 border-t"><button onClick={() => setIsModalVisible(false)} className="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-800 font-semibold transition-all">Cancel</button><button onClick={handleSave} disabled={isSaving} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-70 disabled:cursor-not-allowed rounded-xl text-white font-semibold transition-all flex items-center gap-2">{isSaving ? <><AiOutlineLoading3Quarters className="animate-spin" />Saving...</> : (editingAssignment ? 'Update' : 'Create')}</button></div>
+                            <div className="flex justify-end gap-4 mt-8 pt-6 border-t"><button onClick={() => setIsModalVisible(false)} className="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-800 font-semibold transition-all">Cancel</button><button onClick={handleSave} disabled={isSaving} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-70 disabled:cursor-not-allowed rounded-xl text-white font-semibold transition-all flex items-center gap-2">{isSaving ? <><AiOutlineLoading3Quarters className="animate-spin" />Saving...</> : (editingAssignment ? 'Save Changes' : 'Create')}</button></div>
                         </div>
                     </div>
                 </div>
@@ -368,40 +399,46 @@ const AssignmentList = ({ onSelectAssignment }) => {
 
 // --- Submission List Component ---
 const SubmissionList = ({ assignment, onBack }) => {
-    const [submissions, setSubmissions] = useState([]);
+    const [studentRoster, setStudentRoster] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedSubmission, setSelectedSubmission] = useState(null);
     const [gradeData, setGradeData] = useState({ grade: '', remarks: '' });
     const [isGrading, setIsGrading] = useState(false);
 
-    const fetchSubmissions = useCallback(async () => {
+    const fetchStudentRoster = useCallback(async () => {
         setIsLoading(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/homework/submissions/${assignment.id}`);
-            if (!res.ok) throw new Error("Failed to fetch submissions.");
-            setSubmissions(await res.json());
-        } catch (e) { alert(e.message); } 
-        finally { setIsLoading(false); }
+            // ★★★ FIXED: Use apiClient like mobile version ★★★
+            const response = await apiClient.get(`/homework/submissions/${assignment.id}`);
+            setStudentRoster(response.data);
+        } catch (e) { 
+            alert(`Error: ${e.response?.data?.message || "Failed to fetch student roster."}`); 
+        } finally { 
+            setIsLoading(false); 
+        }
     }, [assignment.id]);
 
-    useEffect(() => { fetchSubmissions(); }, [fetchSubmissions]);
+    useEffect(() => { fetchStudentRoster(); }, [fetchStudentRoster]);
+
+    const openGradeModal = (rosterItem) => {
+        setSelectedSubmission(rosterItem);
+        setGradeData({ grade: rosterItem.grade || '', remarks: rosterItem.remarks || '' });
+    };
 
     const handleGrade = async () => {
-        if (!selectedSubmission) return;
+        if (!selectedSubmission || !selectedSubmission.submission_id) return;
         setIsGrading(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/homework/grade/${selectedSubmission.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(gradeData) });
-            if (!res.ok) throw new Error((await res.json()).message);
-            alert("Submission graded!");
+            // ★★★ FIXED: Use apiClient like mobile version ★★★
+            await apiClient.put(`/homework/grade/${selectedSubmission.submission_id}`, gradeData);
+            alert("Success: Submission graded!");
             setSelectedSubmission(null);
-            fetchSubmissions();
-        } catch (e) { alert(e.message); } 
-        finally { setIsGrading(false); }
-    };
-    
-    const openGradingModal = (submission) => {
-        setGradeData({ grade: submission.grade || '', remarks: submission.remarks || '' });
-        setSelectedSubmission(submission);
+            fetchStudentRoster();
+        } catch (e) { 
+            alert(`Error: ${e.response?.data?.message || "An error occurred."}`); 
+        } finally { 
+            setIsGrading(false); 
+        }
     };
     
     if (isLoading) {
@@ -423,18 +460,18 @@ const SubmissionList = ({ assignment, onBack }) => {
 
             <div className="flex items-center gap-4 mb-6">
                 <div>
-                    <h2 className="text-xl font-bold text-slate-800">Student Submissions</h2>
-                    <p className="text-sm text-slate-600">Review work for "{assignment.title}"</p>
+                    <h2 className="text-xl font-bold text-slate-800">Submissions for: "{assignment.title}"</h2>
+                    <p className="text-sm text-slate-600">Review and grade student work</p>
                 </div>
             </div>
 
-            {!submissions.length ? (
+            {!studentRoster.length ? (
                 <div className="text-center py-16 bg-white rounded-lg border border-slate-200">
                     <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
                         <MdGrade size={32} className="text-slate-400" />
                     </div>
-                    <h3 className="text-xl font-semibold text-slate-700 mb-2">No submissions yet</h3>
-                    <p className="text-slate-500">Check back later to review student work.</p>
+                    <h3 className="text-xl font-semibold text-slate-700 mb-2">No students found</h3>
+                    <p className="text-slate-500">There are no students in this class group.</p>
                 </div>
             ) : (
                 <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
@@ -443,16 +480,25 @@ const SubmissionList = ({ assignment, onBack }) => {
                             <thead className="bg-slate-50 border-b border-slate-200">
                                 <tr>
                                     <th className="px-5 py-3 font-semibold text-slate-600">Student</th>
-                                    <th className="px-5 py-3 font-semibold text-slate-600">Submitted At</th>
+                                    <th className="px-5 py-3 font-semibold text-slate-600">Status</th>
                                     <th className="px-5 py-3 font-semibold text-slate-600">Grade</th>
                                     <th className="px-5 py-3 font-semibold text-slate-600 text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {submissions.map(item => (
-                                    <tr key={item.id} className="border-b border-slate-200/60 hover:bg-slate-50/70">
+                                {studentRoster.map(item => (
+                                    <tr key={item?.student_id?.toString() || Math.random()} className="border-b border-slate-200/60 hover:bg-slate-50/70">
                                         <td className="px-5 py-3 font-medium text-slate-800">{item.student_name}</td>
-                                        <td className="px-5 py-3 text-slate-600">{new Date(item.submitted_at).toLocaleString()}</td>
+                                        <td className="px-5 py-3 text-slate-600">
+                                            {item.submission_id ? (
+                                                <div>
+                                                    <div>Submitted: {new Date(item.submitted_at).toLocaleString()}</div>
+                                                    <div className="text-sm text-slate-500">Status: {item.status}</div>
+                                                </div>
+                                            ) : (
+                                                <span className="text-slate-400 italic">Not Submitted</span>
+                                            )}
+                                        </td>
                                         <td className="px-5 py-3">
                                             {item.grade ? (
                                                 <span className="font-semibold text-green-600">{item.grade}</span>
@@ -462,14 +508,19 @@ const SubmissionList = ({ assignment, onBack }) => {
                                         </td>
                                         <td className="px-5 py-3">
                                             <div className="flex justify-end items-center gap-3">
-                                                <a href={`${API_BASE_URL}${item.submission_path}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-blue-600 hover:underline font-semibold">
-                                                    <FaCloudDownloadAlt />
-                                                    <span>View</span>
-                                                </a>
-                                                <button onClick={() => openGradingModal(item)} className="flex items-center gap-1.5 text-green-600 hover:underline font-semibold">
-                                                    <FaStar />
-                                                    <span>{item.grade ? 'Update' : 'Grade'}</span>
-                                                </button>
+                                                {item.submission_id && (
+                                                    <>
+                                                        {/* ★★★ FIXED: Use SERVER_URL like mobile version ★★★ */}
+                                                        <a href={`${SERVER_URL}${item.submission_path}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-blue-600 hover:underline font-semibold">
+                                                            <FaCloudDownloadAlt />
+                                                            <span>View Submission</span>
+                                                        </a>
+                                                        <button onClick={() => openGradeModal(item)} className="flex items-center gap-1.5 text-green-600 hover:underline font-semibold">
+                                                            <FaStar />
+                                                            <span>{item.grade ? 'Update Grade' : 'Grade'}</span>
+                                                        </button>
+                                                    </>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>
@@ -484,10 +535,10 @@ const SubmissionList = ({ assignment, onBack }) => {
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4">
                     <div className="bg-white rounded-2xl shadow-2xl border w-full max-w-md">
                         <div className="p-6 sm:p-8">
-                            <h2 className="text-2xl font-bold text-center mb-6 text-slate-800">Grade Submission</h2>
+                            <h2 className="text-2xl font-bold text-center mb-6 text-slate-800">Grade Submission for {selectedSubmission?.student_name}</h2>
                             <div className="space-y-5">
-                                <div><label className="block text-slate-700 font-semibold mb-2">Grade</label><input value={gradeData.grade} onChange={e => setGradeData({ ...gradeData, grade: e.target.value })} placeholder="e.g., A+" className="w-full border-2 border-slate-200 rounded-xl p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-slate-50 shadow-inner" /></div>
-                                <div><label className="block text-slate-700 font-semibold mb-2">Remarks</label><textarea rows="3" value={gradeData.remarks} onChange={e => setGradeData({ ...gradeData, remarks: e.target.value })} placeholder="Provide feedback" className="w-full border-2 border-slate-200 rounded-xl p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-slate-50 shadow-inner resize-none" /></div>
+                                <div><label className="block text-slate-700 font-semibold mb-2">Grade</label><input placeholder="e.g., A+, 95/100" value={gradeData.grade} onChange={e => setGradeData({ ...gradeData, grade: e.target.value })} className="w-full border-2 border-slate-200 rounded-xl p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-slate-50 shadow-inner" /></div>
+                                <div><label className="block text-slate-700 font-semibold mb-2">Remarks / Feedback</label><textarea rows="3" placeholder="Provide feedback for the student" value={gradeData.remarks} onChange={e => setGradeData({ ...gradeData, remarks: e.target.value })} className="w-full border-2 border-slate-200 rounded-xl p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-slate-50 shadow-inner resize-none" /></div>
                             </div>
                             <div className="flex justify-end gap-4 mt-8 pt-6 border-t">
                                 <button onClick={() => setSelectedSubmission(null)} className="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-800 font-semibold transition-all">Cancel</button>

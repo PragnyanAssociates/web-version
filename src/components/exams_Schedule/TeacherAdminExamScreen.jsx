@@ -10,10 +10,9 @@ import {
   MdCalendarToday,
   MdInfoOutline,
   MdAccessTime,
-  MdPerson,
 } from "react-icons/md";
 import { useAuth } from "../../context/AuthContext.tsx";
-import { API_BASE_URL } from "../../apiConfig";
+import apiClient from '../../api/client';
 
 // --- Icon Components for Header ---
 function UserIcon() {
@@ -57,7 +56,7 @@ function BellIcon() {
   );
 }
 
-const defaultRow = { date: "", subject: "", time: "" };
+const defaultRow = { date: "", subject: "", time: "", block: "" };
 const defaultSpecialRow = {
   type: "special",
   mainText: "Teacher Work Day",
@@ -126,10 +125,17 @@ const ScheduleDetailView = ({ schedule }) => {
                   {group.items.map((item, itemIndex) => (
                     <div key={itemIndex} className="flex items-center justify-between p-5 hover:bg-slate-100/50 transition-colors">
                       <span className="font-medium text-slate-800 text-base">{item.subject}</span>
-                      <span className="flex items-center text-sm font-semibold text-blue-800 bg-blue-100 px-4 py-1.5 rounded-full">
-                        <MdAccessTime className="w-5 h-5 mr-2 text-blue-500" />
-                        {item.time}
-                      </span>
+                      <div className="flex items-center gap-4">
+                        <span className="flex items-center text-sm font-semibold text-blue-800 bg-blue-100 px-4 py-1.5 rounded-full">
+                          <MdAccessTime className="w-5 h-5 mr-2 text-blue-500" />
+                          {item.time}
+                        </span>
+                        {item.block && (
+                          <span className="text-sm font-medium text-slate-600 bg-slate-200 px-3 py-1 rounded-full">
+                            Block {item.block}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -193,14 +199,12 @@ const TeacherAdminExamScreen = () => {
       async function fetchUnreadNotifications() {
           if (!token) { setUnreadCount?.(0); return; }
           try {
-              const res = await fetch(`${API_BASE_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-              if (res.ok) {
-                  const data = await res.json();
-                  const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
-                  setLocalUnreadCount(count);
-                  setUnreadCount?.(count);
-              } else { setUnreadCount?.(0); }
-          } catch { setUnreadCount?.(0); }
+              const response = await apiClient.get('/notifications');
+              const data = response.data;
+              const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
+              setLocalUnreadCount(count);
+              setUnreadCount?.(count);
+          } catch (error) { setUnreadCount?.(0); }
       }
       fetchUnreadNotifications();
       const id = setInterval(fetchUnreadNotifications, 60000);
@@ -212,16 +216,14 @@ const TeacherAdminExamScreen = () => {
           if (!user?.id) { setLoadingProfile(false); return; }
           setLoadingProfile(true);
           try {
-              const res = await fetch(`${API_BASE_URL}/api/profiles/${user.id}`);
-              if (res.ok) { setProfile(await res.json()); }
-              else {
-                  setProfile({
-                      id: user.id, username: user.username || "Unknown",
-                      full_name: user.full_name || "User", role: user.role || "user",
-                  });
-              }
-          } catch { setProfile(null); }
-          finally { setLoadingProfile(false); }
+              const response = await apiClient.get(`/profiles/${user.id}`);
+              setProfile(response.data);
+          } catch (error) {
+              setProfile({
+                  id: user.id, username: user.username || "Unknown",
+                  full_name: user.full_name || "User", role: user.role || "user",
+              });
+          } finally { setLoadingProfile(false); }
       }
       fetchProfile();
   }, [user]);
@@ -243,18 +245,22 @@ const TeacherAdminExamScreen = () => {
   const fetchSchedules = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/exam-schedules`);
-      if (!res.ok) throw new Error("Failed to fetch schedules.");
-      setSchedules(await res.json());
-    } catch (e) { alert(`Error: ${e.message}`); }
+      const response = await apiClient.get('/exam-schedules');
+      setSchedules(response.data);
+    } catch (e) { 
+      console.error("Error fetching schedules:", e);
+      alert(e.response?.data?.message || "Failed to fetch schedules."); 
+    }
     finally { setIsLoading(false); }
   }, []);
 
   const fetchStudentClasses = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/student-classes`);
-      if (res.ok) setStudentClasses(await res.json());
-    } catch (e) { console.error("Error fetching student classes:", e); }
+      const response = await apiClient.get('/student-classes');
+      setStudentClasses(response.data);
+    } catch (e) { 
+      console.error("Error fetching student classes:", e); 
+    }
   };
 
   useEffect(() => {
@@ -264,12 +270,13 @@ const TeacherAdminExamScreen = () => {
 
   const viewDetails = async (scheduleItem) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/exam-schedules/${scheduleItem.id}`);
-      if (!res.ok) throw new Error("Could not fetch schedule details");
-      const fullSchedule = await res.json();
-      setSelectedSchedule(fullSchedule);
+      const response = await apiClient.get(`/exam-schedules/${scheduleItem.id}`);
+      setSelectedSchedule(response.data);
       setView("detail");
-    } catch (e) { alert(`Error: ${e.message}`); }
+    } catch (e) { 
+      console.error("Error fetching schedule details:", e);
+      alert(e.response?.data?.message || "Could not fetch schedule details"); 
+    }
   };
 
   const handleRowChange = (index, field, value) => {
@@ -289,18 +296,27 @@ const TeacherAdminExamScreen = () => {
 
   const openEditModal = async (schedule) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/exam-schedules/${schedule.id}`);
-      const data = await res.json();
+      const response = await apiClient.get(`/exam-schedules/${schedule.id}`);
+      const data = response.data;
       setEditingSchedule(data); setTitle(data.title); setSubtitle(data.subtitle);
       setSelectedClass(data.class_group); setRows(data.schedule_data || [defaultRow]); setIsModalVisible(true);
-    } catch { alert("Could not load schedule for editing."); }
+    } catch (e) { 
+      console.error("Error loading schedule for editing:", e);
+      alert(e.response?.data?.message || "Could not load schedule for editing."); 
+    }
   };
 
   const handleDelete = (schedule) => {
     if (window.confirm(`Delete "${schedule.title}" for ${schedule.class_group}?`)) {
-      fetch(`${API_BASE_URL}/api/exam-schedules/${schedule.id}`, { method: "DELETE" })
-        .then(() => { alert("Schedule deleted."); fetchSchedules(); })
-        .catch((e) => alert(e.message));
+      apiClient.delete(`/exam-schedules/${schedule.id}`)
+        .then(() => { 
+          alert("Schedule deleted."); 
+          fetchSchedules(); 
+        })
+        .catch((e) => {
+          console.error("Error deleting schedule:", e);
+          alert(e.response?.data?.message || "Failed to delete schedule.");
+        });
     }
   };
 
@@ -309,15 +325,23 @@ const TeacherAdminExamScreen = () => {
       return alert("Title, Class, and at least one row are required.");
     }
     setIsSaving(true);
-    const url = editingSchedule ? `${API_BASE_URL}/api/exam-schedules/${editingSchedule.id}` : `${API_BASE_URL}/api/exam-schedules`;
-    const method = editingSchedule ? "PUT" : "POST";
     const payload = { title, subtitle, class_group: selectedClass, schedule_data: rows, created_by_id: user?.id };
+    
     try {
-      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      if (!res.ok) throw new Error((await res.json()).message || "Error saving");
-      alert(`Schedule ${editingSchedule ? "updated" : "created"}!`);
-      setIsModalVisible(false); fetchSchedules();
-    } catch (e) { alert(`Error: ${e.message}`); }
+      let response;
+      if (editingSchedule) {
+        response = await apiClient.put(`/exam-schedules/${editingSchedule.id}`, payload);
+      } else {
+        response = await apiClient.post('/exam-schedules', payload);
+      }
+      
+      alert(response.data.message || `Schedule ${editingSchedule ? "updated" : "created"}!`);
+      setIsModalVisible(false); 
+      fetchSchedules();
+    } catch (e) { 
+      console.error("Error saving schedule:", e);
+      alert(e.response?.data?.message || "Failed to save schedule."); 
+    }
     finally { setIsSaving(false); }
   };
   
@@ -334,67 +358,95 @@ const TeacherAdminExamScreen = () => {
       return <ScheduleDetailView schedule={selectedSchedule} />;
     }
 
-    // --- Table-based List View ---
+    // --- ★★★ START: REDESIGNED TABLE UI ★★★ ---
     return (
       <>
-        <div className="bg-white rounded-xl shadow-md border border-slate-200/80 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-lg border border-slate-200/80 overflow-hidden">
           <div className="overflow-x-auto">
-            <div className="min-w-[700px]">
-              {/* Table Header */}
-              <div className="grid grid-cols-12 bg-slate-50 border-b border-slate-200 px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                <div className="col-span-5">Schedule Title</div>
-                <div className="col-span-2">Class</div>
-                <div className="col-span-3">Created By</div>
-                <div className="col-span-2 text-right">Actions</div>
-              </div>
-              {/* Table Body */}
-              <div>
-                {!isLoading && schedules.length === 0 && (
-                  <div className="text-center p-10 text-slate-500">
-                    <MdCalendarToday className="mx-auto w-12 h-12 text-slate-300" />
-                    <p className="mt-4 font-semibold">No schedules found</p>
-                    <p className="text-sm">Click the '+' button to create a new one.</p>
-                  </div>
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th scope="col" className="w-5/12 px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                    Schedule Title
+                  </th>
+                  <th scope="col" className="w-2/12 px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                    Class
+                  </th>
+                  <th scope="col" className="w-3/12 px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                    Created By
+                  </th>
+                  <th scope="col" className="w-2/12 px-6 py-4 text-right text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-slate-200">
+                {!isLoading && schedules.length === 0 ? (
+                  <tr>
+                    <td colSpan="4">
+                      <div className="text-center p-12 text-slate-500">
+                        <MdCalendarToday className="mx-auto w-16 h-16 text-slate-300" />
+                        <h3 className="mt-4 text-xl font-semibold text-slate-700">No Schedules Found</h3>
+                        <p className="mt-1 text-sm">Get started by creating a new exam schedule.</p>
+                        <button
+                          onClick={openCreateModal}
+                          className="mt-6 inline-flex items-center gap-2 bg-indigo-600 text-white font-semibold px-5 py-2.5 rounded-lg shadow-md hover:bg-indigo-700 transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-indigo-300"
+                          type="button"
+                        >
+                          <MdAdd size={20} />
+                          Create Schedule
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  schedules.map((item) => (
+                    <tr key={item.id} className="even:bg-slate-50/70 hover:bg-blue-50/50 transition-colors duration-200">
+                      <td className="px-6 py-4 whitespace-nowrap align-middle">
+                        <div className="font-semibold text-slate-800">{item.title}</div>
+                        <div className="text-sm text-slate-500">{item.subtitle}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap align-middle">
+                        <span className="inline-block text-xs font-bold bg-indigo-100 text-indigo-800 px-3 py-1.5 rounded-full">
+                          {item.class_group}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 align-middle">
+                        {item.created_by}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium align-middle">
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            onClick={() => viewDetails(item)}
+                            className="p-2 text-slate-500 bg-slate-100 hover:bg-slate-200 hover:text-slate-700 rounded-lg transition-colors"
+                            aria-label="View Details"
+                            title="View Details"
+                          >
+                            <MdVisibility size={20} />
+                          </button>
+                          <button
+                            onClick={() => openEditModal(item)}
+                            className="p-2 text-blue-600 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
+                            aria-label="Edit Schedule"
+                            title="Edit Schedule"
+                          >
+                            <MdEdit size={20} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(item)}
+                            className="p-2 text-red-600 bg-red-100 hover:bg-red-200 rounded-lg transition-colors"
+                            aria-label="Delete Schedule"
+                            title="Delete Schedule"
+                          >
+                            <MdDelete size={20} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
                 )}
-                {schedules.map((item) => (
-                  <div key={item.id} className="grid grid-cols-12 items-center px-4 py-4 border-b border-slate-200 last:border-b-0 hover:bg-slate-50/70 transition-colors duration-200">
-                    <div className="col-span-5 font-medium text-slate-800">{item.title}</div>
-                    <div className="col-span-2">
-                      <span className="inline-block text-xs font-semibold bg-indigo-100 text-indigo-700 px-2.5 py-1 rounded-full">
-                        {item.class_group}
-                      </span>
-                    </div>
-                    <div className="col-span-3 text-sm text-slate-600">{item.created_by}</div>
-                    <div className="col-span-2 flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => viewDetails(item)}
-                        className="p-2 bg-slate-200 hover:bg-slate-300 rounded-lg transition-colors"
-                        aria-label="View Details"
-                        title="View Details"
-                      >
-                        <MdVisibility className="text-slate-600" size={18} />
-                      </button>
-                      <button
-                        onClick={() => openEditModal(item)}
-                        className="p-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
-                        aria-label="Edit Schedule"
-                        title="Edit Schedule"
-                      >
-                        <MdEdit className="text-blue-600" size={18} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(item)}
-                        className="p-2 bg-red-100 hover:bg-red-200 rounded-lg transition-colors"
-                        aria-label="Delete Schedule"
-                        title="Delete Schedule"
-                      >
-                        <MdDelete className="text-red-600" size={18} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -408,6 +460,7 @@ const TeacherAdminExamScreen = () => {
         </button>
       </>
     );
+     // --- ★★★ END: REDESIGNED TABLE UI ★★★ ---
   };
   
   return (
@@ -518,11 +571,13 @@ const TeacherAdminExamScreen = () => {
               <input
                 className="border border-slate-300 p-3 rounded-lg w-full mb-4 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none transition duration-200"
                 value={title} onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g., Final Term Exam"
               />
               <label className="block font-medium text-slate-700 mb-1">Subtitle</label>
               <input
                 className="border border-slate-300 p-3 rounded-lg w-full mb-4 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none transition duration-200"
                 value={subtitle} onChange={(e) => setSubtitle(e.target.value)}
+                placeholder="e.g., March 2025"
               />
               <label className="block font-medium text-slate-700 mb-1">Class</label>
               <select
@@ -535,9 +590,11 @@ const TeacherAdminExamScreen = () => {
               <label className="block font-medium text-slate-700 mb-2">Schedule Rows</label>
               {rows.map((row, index) => (
                 <div key={index} className="relative border p-4 rounded-lg mb-4 bg-slate-50 border-slate-200">
-                  <button onClick={() => removeRow(index)} className="absolute top-2 right-2 bg-slate-200 text-slate-600 p-1 rounded-full hover:bg-red-500 hover:text-white transition-all" aria-label="Remove Row">
-                    <MdClose size={16} />
-                  </button>
+                  {rows.length > 1 && (
+                    <button onClick={() => removeRow(index)} className="absolute top-2 right-2 bg-slate-200 text-slate-600 p-1 rounded-full hover:bg-red-500 hover:text-white transition-all" aria-label="Remove Row">
+                      <MdClose size={16} />
+                    </button>
+                  )}
                   {row.type === "special" ? (
                     <>
                       <input
@@ -552,7 +609,7 @@ const TeacherAdminExamScreen = () => {
                       />
                     </>
                   ) : (
-                    <div className="grid sm:grid-cols-3 gap-3">
+                    <div className="grid sm:grid-cols-4 gap-3">
                       <input
                         className="border border-slate-300 p-3 rounded-lg w-full focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none transition duration-200"
                         value={row.date} onChange={(e) => handleRowChange(index, "date", e.target.value)}
@@ -567,6 +624,11 @@ const TeacherAdminExamScreen = () => {
                         className="border border-slate-300 p-3 rounded-lg w-full focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none transition duration-200"
                         value={row.time} onChange={(e) => handleRowChange(index, "time", e.target.value)}
                         placeholder="Time"
+                      />
+                      <input
+                        className="border border-slate-300 p-3 rounded-lg w-full focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none transition duration-200"
+                        value={row.block} onChange={(e) => handleRowChange(index, "block", e.target.value)}
+                        placeholder="Block"
                       />
                     </div>
                   )}
