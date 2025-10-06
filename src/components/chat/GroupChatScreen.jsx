@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext.tsx';
-import { SERVER_URL } from '../../apiConfig'; // ★★★ FIXED: Use SERVER_URL like mobile
-import apiClient from '../../api/client.js'; // ★★★ FIXED: Use apiClient like mobile
+import { SERVER_URL } from '../../apiConfig';
+import apiClient from '../../api/client.js';
 import { io } from 'socket.io-client';
 import EmojiPicker from 'emoji-picker-react';
 import { MdChat, MdSend, MdAttachFile, MdEmojiEmotions, MdClose, MdPerson, MdOnlinePrediction, MdArrowBack } from 'react-icons/md';
@@ -49,6 +49,7 @@ function BellIcon() {
     </svg>
   );
 }
+
 function ProfileAvatar() {
   const { getProfileImageUrl } = useAuth()
   const [imageError, setImageError] = useState(false)
@@ -106,7 +107,6 @@ const GroupChatScreen = () => {
     const messagesEndRef = useRef(null);
     const fileInputRef = useRef(null);
 
-    // ★★★ FIXED: Use apiClient for notifications like mobile ★★★
     useEffect(() => {
         async function fetchUnreadNotifications() {
             if (!token) { 
@@ -128,7 +128,6 @@ const GroupChatScreen = () => {
         return () => clearInterval(id);
     }, [token, setUnreadCount]);
 
-    // ★★★ FIXED: Use apiClient for profile like mobile ★★★
     useEffect(() => {
         async function fetchProfile() {
             if (!user?.id) { 
@@ -154,11 +153,10 @@ const GroupChatScreen = () => {
         fetchProfile();
     }, [user]);
 
-    // ★★★ FIXED: Chat functionality to match mobile exactly ★★★
+    // ★★★ UPDATED: Chat functionality with message deletion ★★★
     useEffect(() => {
         const fetchHistory = async () => {
             try {
-                // ★★★ FIXED: Use apiClient like mobile ★★★
                 const response = await apiClient.get('/group-chat/history');
                 setMessages(response.data);
             } catch (error) {
@@ -170,7 +168,6 @@ const GroupChatScreen = () => {
         };
 
         fetchHistory();
-        // ★★★ FIXED: Use SERVER_URL like mobile ★★★
         socketRef.current = io(SERVER_URL);
         
         socketRef.current.on('connect', () => {
@@ -186,8 +183,17 @@ const GroupChatScreen = () => {
             setMessages(prevMessages => [...prevMessages, receivedMessage]);
         });
 
+        // ★★★ NEW: Listen for message deletion events ★★★
+        socketRef.current.on('messageDeleted', (deletedMessageId) => {
+            setMessages(prevMessages => prevMessages.filter(message => message.id !== deletedMessageId));
+        });
+
         return () => {
-            if (socketRef.current) socketRef.current.disconnect();
+            if (socketRef.current) {
+                // ★★★ NEW: Clean up message deletion listener ★★★
+                socketRef.current.off('messageDeleted');
+                socketRef.current.disconnect();
+            }
         };
     }, []);
     
@@ -213,7 +219,6 @@ const GroupChatScreen = () => {
         return '/';
     };
 
-    // ★★★ FIXED: Match mobile sendMessage exactly ★★★
     const sendMessage = (type, text, url) => {
         if (!user || !socketRef.current) return;
         
@@ -242,12 +247,20 @@ const GroupChatScreen = () => {
         }
     };
 
+    // ★★★ NEW: Function to handle message deletion ★★★
+    const handleDeleteMessage = (messageId) => {
+        if (window.confirm("Are you sure you want to permanently delete this message for everyone?")) {
+            if (socketRef.current && user) {
+                socketRef.current.emit('deleteMessage', { messageId, userId: user.id });
+            }
+        }
+    };
+
     const handleSendText = () => {
         if (newMessage.trim() === '') return;
         sendMessage('text', newMessage.trim(), null);
     };
 
-    // ★★★ FIXED: File upload to match mobile pattern ★★★
     const handleFileChange = async (event) => {
         const file = event.target.files[0];
         if (!file) return;
@@ -261,7 +274,6 @@ const GroupChatScreen = () => {
         formData.append('media', file);
         
         try {
-            // ★★★ FIXED: Use apiClient like mobile ★★★
             const res = await apiClient.post('/group-chat/upload-media', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
@@ -282,7 +294,7 @@ const GroupChatScreen = () => {
         }
     };
 
-    // ★★★ FIXED: Message rendering to match mobile ★★★
+    // ★★★ UPDATED: Message rendering with right-click deletion ★★★
     const renderMessageItem = (item) => {
         if (!user) return null;
         const isMyMessage = item.user_id === parseInt(user.id, 10);
@@ -306,7 +318,7 @@ const GroupChatScreen = () => {
                 case 'image':
                     return (
                         <img 
-                            src={`${SERVER_URL}${item.file_url}`} // ★★★ FIXED: Use SERVER_URL like mobile ★★★
+                            src={`${SERVER_URL}${item.file_url}`}
                             alt="Shared content" 
                             className="w-64 h-auto max-h-64 rounded-lg object-cover border border-slate-200" 
                             loading="lazy" 
@@ -322,8 +334,21 @@ const GroupChatScreen = () => {
             }
         };
 
+        // ★★★ NEW: Add right-click context menu for deletion ★★★
+        const handleContextMenu = (e) => {
+            if (isMyMessage) {
+                e.preventDefault();
+                handleDeleteMessage(item.id);
+            }
+        };
+
         return (
-            <div key={item.id} className={`flex items-end mb-4 ${isMyMessage ? 'justify-end' : 'justify-start'}`}>
+            <div 
+                key={item.id} 
+                className={`flex items-end mb-4 ${isMyMessage ? 'justify-end' : 'justify-start'}`}
+                onContextMenu={handleContextMenu} // ★★★ NEW: Right-click for deletion ★★★
+                style={{ cursor: isMyMessage ? 'context-menu' : 'default' }}
+            >
                 <div className={`flex flex-col max-w-xs md:max-w-md ${isMyMessage ? 'items-end' : 'items-start'}`}>
                     {!isMyMessage && (
                         <span 
@@ -333,12 +358,18 @@ const GroupChatScreen = () => {
                             {item.full_name} ({item.role})
                         </span>
                     )}
-                    <div className={`px-4 py-3 rounded-2xl ${
+                    <div className={`px-4 py-3 rounded-2xl transition-all duration-200 ${
                         isMyMessage 
-                            ? 'bg-blue-600 text-white rounded-br-none' 
-                            : 'bg-white text-slate-800 rounded-bl-none border border-slate-200'
+                            ? 'bg-blue-600 text-white rounded-br-none hover:bg-blue-700' 
+                            : 'bg-white text-slate-800 rounded-bl-none border border-slate-200 hover:shadow-md'
                     } ${item.message_type === 'image' ? 'p-1 bg-transparent' : ''}`}>
                         {renderContent()}
+                        {/* ★★★ NEW: Show deletion hint for own messages ★★★ */}
+                        {isMyMessage && (
+                            <div className="text-xs opacity-0 hover:opacity-70 transition-opacity mt-1 text-blue-100">
+                                Right-click to delete
+                            </div>
+                        )}
                     </div>
                     <span className={`text-xs mt-1 ${
                         isMyMessage ? 'text-slate-400 mr-2' : 'text-slate-400 ml-2'
@@ -359,9 +390,9 @@ const GroupChatScreen = () => {
     }
 
     return (
-        <div className="min-h-screen flex flex-col bg-slate-100">
-            <header className="border-b border-slate-200 bg-slate-100 sticky top-0 z-40">
-                <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-3">
+        <div className="min-h-screen flex flex-col bg-slate-50">
+        <header className="border-b border-slate-200 bg-slate-100">
+  <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-2">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
                         <div className="min-w-0 flex-1">
                             <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-slate-700 truncate">School Group Chat</h1>
@@ -396,7 +427,6 @@ const GroupChatScreen = () => {
                             </div>
                             <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
                             <div className="flex items-center gap-2 sm:gap-3">
-                               
 <ProfileAvatar />
                                 <div className="hidden sm:flex flex-col">
                                     <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">{profile?.full_name || profile?.username || "User"}</span>

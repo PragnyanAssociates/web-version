@@ -1,9 +1,9 @@
 "use client"
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from '../context/AuthContext.tsx';
-import { MdAccountCircle, MdCancel, MdCheckCircle, MdArrowBack, MdBarChart, MdPerson, MdEventAvailable, MdEventBusy } from 'react-icons/md';
+import { MdAccountCircle, MdCancel, MdCheckCircle, MdArrowBack, MdBarChart, MdPerson, MdEventAvailable, MdEventBusy, MdCheck } from 'react-icons/md';
 import apiClient from '../api/client';
 
 // --- Icon Components for Header ---
@@ -47,6 +47,42 @@ function BellIcon() {
         </svg>
     );
 }
+function ProfileAvatar() {
+  const { getProfileImageUrl } = useAuth()
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  
+  const hasValidImage = getProfileImageUrl() && !imageError && imageLoaded
+  
+  return (
+    <div className="relative w-7 h-7 sm:w-9 sm:h-9">
+      {/* Always render the user placeholder */}
+      <div className={`absolute inset-0 rounded-full bg-gray-100 flex items-center justify-center border-2 border-slate-400 transition-opacity duration-200 ${hasValidImage ? 'opacity-0' : 'opacity-100'}`}>
+        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
+        </svg>
+      </div>
+      
+      {/* Profile image overlay */}
+      {getProfileImageUrl() && (
+        <img 
+          src={getProfileImageUrl()} 
+          alt="Profile" 
+          className={`absolute inset-0 w-full h-full rounded-full border border-slate-200 object-cover transition-opacity duration-200 ${hasValidImage ? 'opacity-100' : 'opacity-0'}`}
+          onError={() => {
+            setImageError(true)
+            setImageLoaded(false)
+          }}
+          onLoad={() => {
+            setImageError(false)
+            setImageLoaded(true)
+          }}
+        />
+      )}
+    </div>
+  )
+}   
+
 
 // --- Helper UI Components ---
 const SummaryCard = ({ label, value, icon, colorClass }) => (
@@ -85,10 +121,14 @@ const StyledSelect = ({ value, onChange, disabled, children }) => (
 
 const capitalize = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
 
-// --- Main Component with Consistent API Usage ---
+// --- Main Component with Fixed Navigation ---
 const AttendanceScreen = ({ route }) => {
     const { user, token, logout, getProfileImageUrl, setUnreadCount } = useAuth() || {};
     const navigate = useNavigate();
+    const location = useLocation();
+
+    // ★★★ FIXED: Unify parameter source for web compatibility ★★★
+    const params = route?.params || location?.state || null;
 
     // --- State for Header ---
     const [profile, setProfile] = useState(null);
@@ -100,7 +140,6 @@ const AttendanceScreen = ({ route }) => {
         async function fetchUnreadNotifications() {
             if (!token) { setUnreadCount?.(0); return; }
             try {
-                // ★★★ FIXED: Use apiClient like mobile version ★★★
                 const res = await apiClient.get('/notifications');
                 const count = Array.isArray(res.data) ? res.data.filter((n) => !n.is_read).length : 0;
                 setLocalUnreadCount(count);
@@ -119,7 +158,6 @@ const AttendanceScreen = ({ route }) => {
             if (!user?.id) { setLoadingProfile(false); return; }
             setLoadingProfile(true);
             try {
-                // ★★★ FIXED: Use apiClient like mobile version ★★★
                 const res = await apiClient.get(`/profiles/${user.id}`);
                 setProfile(res.data);
             } catch (error) {
@@ -157,8 +195,8 @@ const AttendanceScreen = ({ route }) => {
         switch (user.role) {
             case 'student': return { title: "My Attendance Report", subtitle: "View your daily, monthly, and overall attendance" };
             case 'teacher':
-                return route?.params
-                    ? { title: "Mark Live Attendance", subtitle: `${route.params.class_group} - ${route.params.subject_name}` }
+                return params
+                    ? { title: "Mark Live Attendance", subtitle: `${params.class_group} - ${params.subject_name}` }
                     : { title: "Teacher Attendance Summary", subtitle: "Review attendance records for your classes" };
             case 'admin': return { title: "Admin Attendance Dashboard", subtitle: "Monitor attendance across all classes" };
             default: return { title: "Attendance", subtitle: "" };
@@ -171,7 +209,8 @@ const AttendanceScreen = ({ route }) => {
         }
         switch (user.role) {
             case 'teacher':
-                return route?.params ? <TeacherLiveAttendanceView route={route} teacher={user} /> : <TeacherSummaryView teacher={user} />;
+                // ★★★ FIXED: Pass params in route object format ★★★
+                return params ? <TeacherLiveAttendanceView route={{ params }} teacher={user} /> : <TeacherSummaryView teacher={user} />;
             case 'student':
                 return <StudentAttendanceView student={user} />;
             case 'admin':
@@ -184,9 +223,9 @@ const AttendanceScreen = ({ route }) => {
     const { title, subtitle } = getHeaderContent();
 
     return (
-        <div className="min-h-screen bg-slate-100">
-            <header className="border-b border-slate-200 bg-slate-100 sticky top-0 z-40">
-                <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-3">
+        <div className="min-h-screen bg-slate-50">
+             <header className="border-b border-slate-200 bg-slate-100">
+ <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-2">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
                         <div className="min-w-0 flex-1">
                             <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-slate-800 truncate">{title}</h1>
@@ -202,7 +241,7 @@ const AttendanceScreen = ({ route }) => {
                             </div>
                             <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
                             <div className="flex items-center gap-2 sm:gap-3">
-                                <img src={getProfileImageUrl() || "/placeholder.svg"} alt="Profile" className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover" onError={(e) => { e.currentTarget.src = "/assets/profile.png" }} />
+                              <ProfileAvatar />
                                 <div className="hidden sm:flex flex-col">
                                     <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">{profile?.full_name || profile?.username || "User"}</span>
                                     <span className="text-xs text-slate-600 capitalize">{profile?.role || ""}</span>
@@ -252,7 +291,6 @@ const StudentAttendanceView = ({ student }) => {
             if (!student?.id) return;
             setIsLoading(true);
             try {
-                // ★★★ FIXED: Use apiClient like mobile version ★★★
                 const response = await apiClient.get(`/attendance/my-history/${student.id}?viewMode=${viewMode}`);
                 const historyWithPeriod = response.data.history.map(item => ({
                     ...item,
@@ -367,7 +405,6 @@ const TeacherSummaryView = ({ teacher }) => {
         }
         setIsLoading(true);
         try {
-            // ★★★ FIXED: Use apiClient like mobile version ★★★
             const response = await apiClient.get(`/attendance/teacher-summary?teacherId=${teacher.id}&classGroup=${classGroup}&subjectName=${subjectName}`);
             setSummaryData(response.data);
         } catch (error) {
@@ -383,7 +420,6 @@ const TeacherSummaryView = ({ teacher }) => {
         const fetchAssignments = async () => {
             if (!teacher?.id) { setIsLoading(false); return; }
             try {
-                // ★★★ FIXED: Use apiClient like mobile version ★★★
                 const response = await apiClient.get(`/teacher-assignments/${teacher.id}`);
                 const data = response.data;
                 setAssignments(data);
@@ -476,7 +512,6 @@ const AdminAttendanceView = () => {
             setSelectedSubject(''); 
             setSummaryData(null);
             try {
-                // ★★★ FIXED: Use apiClient like mobile version ★★★
                 const response = await apiClient.get(`/subjects/${selectedClass}`);
                 const data = response.data;
                 setSubjects(data);
@@ -502,7 +537,6 @@ const AdminAttendanceView = () => {
             }
             setIsLoading(true);
             try {
-                // ★★★ FIXED: Use apiClient like mobile version ★★★
                 const response = await apiClient.get(`/attendance/admin-summary?classGroup=${selectedClass}&subjectName=${selectedSubject}`);
                 setSummaryData(response.data);
             } catch (error) {
@@ -561,6 +595,7 @@ const AdminAttendanceView = () => {
 };
 
 // --- Teacher Live Attendance View ---
+// ★★★ UPDATED COMPONENT ★★★
 const TeacherLiveAttendanceView = ({ route, teacher }) => {
     const { class_group, subject_name, period_number, date } = route?.params || {};
     const [students, setStudents] = useState([]);
@@ -578,19 +613,18 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
         const fetchAttendanceSheet = async () => {
             if (!class_group || !date || !period_number) {
                 window.alert('Missing required parameters to mark attendance.');
-                setIsLoading(false); 
+                setIsLoading(false);
                 return;
             }
             try {
-                // ★★★ FIXED: Use apiClient like mobile version ★★★
                 const response = await apiClient.get(`/attendance/sheet?class_group=${class_group}&date=${date}&period_number=${period_number}`);
                 const data = response.data;
                 const studentsWithStatus = data.map((s) => ({ ...s, status: s.status || 'Present' }));
                 setStudents(studentsWithStatus);
-            } catch (error) { 
+            } catch (error) {
                 window.alert(`Error: ${error.response?.data?.message || 'Failed to load students.'}`);
-            } finally { 
-                setIsLoading(false); 
+            } finally {
+                setIsLoading(false);
             }
         };
         fetchAttendanceSheet();
@@ -605,7 +639,6 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
         if (attendanceData.length === 0) return;
         setIsSaving(true);
         try {
-            // ★★★ FIXED: Use apiClient like mobile version ★★★
             await apiClient.post('/attendance', {
                 class_group,
                 subject_name,
@@ -618,19 +651,19 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
             navigate('/TeacherDashboard');
         } catch (error) {
             window.alert(`Error: ${error.response?.data?.message || 'Failed to save attendance.'}`);
-        } finally { 
-            setIsSaving(false); 
+        } finally {
+            setIsSaving(false);
         }
     };
 
     if (isLoading) {
         return <div className="flex justify-center items-center py-20"><Spinner /></div>;
     }
-    
+
     return (
         <div className="space-y-6">
             <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 text-center">
-                 <div className="text-lg font-semibold text-slate-700">
+                <div className="text-lg font-semibold text-slate-700">
                     {`Period ${period_number} (${PERIOD_DEFINITIONS.find(p => p.period === parseInt(period_number))?.time || ''})`}
                 </div>
                 <div className="text-sm text-slate-500">
@@ -640,12 +673,26 @@ const TeacherLiveAttendanceView = ({ route, teacher }) => {
             <div className="bg-slate-50 rounded-lg border border-slate-200 overflow-hidden">
                 <div className="divide-y divide-slate-200">
                     {students.map((item) => (
-                        <div key={item.id} className="flex items-center p-3">
-                            <MdAccountCircle size={32} className="text-slate-400 mr-4 flex-shrink-0" />
-                            <div className="flex-1 text-base font-semibold min-w-0 truncate text-slate-800">{item.full_name}</div>
-                            <div className="flex items-center ml-3 space-x-2">
-                                <button className={`w-10 h-10 rounded-full border-2 font-bold transition-all flex items-center justify-center ${item.status === 'Present' ? 'bg-green-600 border-green-700 text-white shadow-md' : 'border-slate-300 text-slate-600 bg-white hover:bg-slate-100'}`} onClick={() => handleMarkAttendance(item.id, 'Present')} title="Present">P</button>
-                                <button className={`w-10 h-10 rounded-full border-2 font-bold transition-all flex items-center justify-center ${item.status === 'Absent' ? 'bg-red-600 border-red-700 text-white shadow-md' : 'border-slate-300 text-slate-600 bg-white hover:bg-slate-100'}`} onClick={() => handleMarkAttendance(item.id, 'Absent')} title="Absent">A</button>
+                        <div key={item.id} className="flex flex-col sm:flex-row items-center justify-between p-4 gap-4">
+                            <div className="flex items-center w-full sm:w-auto">
+                                <MdAccountCircle size={32} className="text-slate-400 mr-4 flex-shrink-0" />
+                                <div className="flex-1 text-base font-semibold min-w-0 truncate text-slate-800">{item.full_name}</div>
+                            </div>
+                            <div className="inline-flex rounded-lg border border-slate-300 overflow-hidden shadow-sm flex-shrink-0 w-full sm:w-auto">
+                                <button
+                                    onClick={() => handleMarkAttendance(item.id, 'Present')}
+                                    className={`flex-1 sm:flex-none justify-center font-semibold text-sm transition-colors duration-200 ease-in-out flex items-center gap-2 px-4 py-2 ${item.status === 'Present' ? 'bg-green-500 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
+                                >
+                                    <MdCheckCircle />
+                                    <span>Present</span>
+                                </button>
+                                <button
+                                    onClick={() => handleMarkAttendance(item.id, 'Absent')}
+                                    className={`flex-1 sm:flex-none justify-center font-semibold text-sm transition-colors duration-200 ease-in-out flex items-center gap-2 px-4 py-2 border-l border-slate-300 ${item.status === 'Absent' ? 'bg-red-500 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
+                                >
+                                    <MdCancel />
+                                    <span>Absent</span>
+                                </button>
                             </div>
                         </div>
                     ))}

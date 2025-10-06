@@ -5,9 +5,12 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  .conversation-back-button {
-  display: none !important;
+  background-color:#f8fafc; /* Added slate-100 background color */
 }
+
+/* Fixed: Moved the nested class outside the body rule */
+.conversation-back-button {
+  display: none !important;
 }
 
 code {

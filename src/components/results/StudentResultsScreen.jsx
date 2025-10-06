@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext.tsx';
 import apiClient from '../../api/client';
 import { MdArticle, MdTrendingUp, MdChatBubbleOutline, MdDownload, MdAnalytics, MdArrowBack } from "react-icons/md";
 
+
 // --- Icon Components for Header ---
 function UserIcon() {
   return (
@@ -14,6 +15,7 @@ function UserIcon() {
   );
 }
 
+
 function HomeIcon() {
   return (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
@@ -22,6 +24,7 @@ function HomeIcon() {
     </svg>
   );
 }
+
 
 function CalendarIcon() {
   return (
@@ -33,6 +36,7 @@ function CalendarIcon() {
     </svg>
   );
 }
+
 
 function BellIcon() {
   return (
@@ -46,9 +50,47 @@ function BellIcon() {
   );
 }
 
+function ProfileAvatar() {
+  const { getProfileImageUrl } = useAuth()
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  
+  const hasValidImage = getProfileImageUrl() && !imageError && imageLoaded
+  
+  return (
+    <div className="relative w-7 h-7 sm:w-9 sm:h-9">
+      {/* Always render the user placeholder */}
+      <div className={`absolute inset-0 rounded-full bg-gray-100 flex items-center justify-center border-2 border-slate-400 transition-opacity duration-200 ${hasValidImage ? 'opacity-0' : 'opacity-100'}`}>
+        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
+        </svg>
+      </div>
+      
+      {/* Profile image overlay */}
+      {getProfileImageUrl() && (
+        <img 
+          src={getProfileImageUrl()} 
+          alt="Profile" 
+          className={`absolute inset-0 w-full h-full rounded-full border border-slate-200 object-cover transition-opacity duration-200 ${hasValidImage ? 'opacity-100' : 'opacity-0'}`}
+          onError={() => {
+            setImageError(true)
+            setImageLoaded(false)
+          }}
+          onLoad={() => {
+            setImageError(false)
+            setImageLoaded(true)
+          }}
+        />
+      )}
+    </div>
+  )
+} 
+
+
 export default function StudentResultsScreen() {
   const { user, token, logout, getProfileImageUrl, setUnreadCount } = useAuth();
   const navigate = useNavigate();
+
 
   // --- State for Header ---
   const [profile, setProfile] = useState(null);
@@ -56,9 +98,11 @@ export default function StudentResultsScreen() {
   const [unreadCount, setLocalUnreadCount] = useState(0);
   const [query, setQuery] = useState("");
 
+
   // --- State for Results ---
   const [reports, setReports] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+
 
   // --- Hooks for Header ---
   useEffect(() => {
@@ -79,26 +123,31 @@ export default function StudentResultsScreen() {
     return () => clearInterval(id);
   }, [token, setUnreadCount]);
 
+
   useEffect(() => {
-      async function fetchProfile() {
-          if (!user?.id) { setLoadingProfile(false); return; }
-          setLoadingProfile(true);
-          try {
-              const response = await apiClient.get(`/profiles/${user.id}`);
-              setProfile(response.data);
-          } catch {
-              setProfile({
-                  id: user.id,
-                  username: user.username || "Unknown",
-                  full_name: user.full_name || "User",
-                  role: user.role || "user",
-              });
-          } finally {
-              setLoadingProfile(false);
-          }
-      }
-      fetchProfile();
-  }, [user]);
+        async function fetchProfile() {
+            if (!user?.id) {
+                setLoadingProfile(false);
+                return;
+            }
+            try {
+                const res = await apiClient.get(`/profiles/${user.id}`);
+                setProfile(res.data);
+            } catch (error) {
+                setProfile({ 
+                    id: user.id, 
+                    username: user.username || "Unknown", 
+                    full_name: user.full_name || "User", 
+                    role: user.role || "user" 
+                });
+            } finally {
+                setLoadingProfile(false);
+            }
+        }
+        fetchProfile();
+    }, [user]);
+
+
   
   // --- Helper Functions ---
   const handleLogout = () => {
@@ -116,6 +165,7 @@ export default function StudentResultsScreen() {
     return '/';
   };
 
+
   const fetchReports = useCallback(async () => {
     if (!user?.id) return;
     setIsLoading(true);
@@ -123,20 +173,22 @@ export default function StudentResultsScreen() {
       const response = await apiClient.get(`/reports/student/${user.id}`);
       setReports(response.data);
     } catch (error) {
-      // ★★★ REMOVED ': any' TYPE ANNOTATION ★★★
       alert(error.response?.data?.message || "Failed to fetch progress reports.");
     } finally {
       setIsLoading(false);
     }
   }, [user?.id]);
 
+
   useEffect(() => {
     fetchReports();
   }, [fetchReports]);
 
+
   const handleViewReport = (reportId) => {
     navigate(`/results/${reportId}`);
   };
+
 
   const renderContent = () => {
     if (isLoading || loadingProfile) {
@@ -147,6 +199,7 @@ export default function StudentResultsScreen() {
             </div>
         );
     }
+
 
     if (reports.length === 0) {
         return (
@@ -166,8 +219,8 @@ export default function StudentResultsScreen() {
           {reports.map((item, index) => (
             <div
               key={item.report_id}
-              className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4"
-              style={{ animation: `fadeInUp 0.5s ease-out ${index * 0.05}s both` }}
+              className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 fadeInUp"
+              style={{ animationDelay: `${index * 0.05}s` }}
             >
               {/* Main Info: Title, Date, and Comments */}
               <div className="flex-grow">
@@ -188,6 +241,7 @@ export default function StudentResultsScreen() {
                   </div>
                 )}
               </div>
+
 
               {/* Grade and Action Button */}
               <div className="w-full md:w-auto flex items-center justify-between gap-6 flex-shrink-0 pt-2 md:pt-0">
@@ -212,15 +266,17 @@ export default function StudentResultsScreen() {
     );
   };
 
+
   return (
-    <div className="min-h-screen bg-slate-100">
-        <header className="border-b border-slate-200 bg-slate-100 sticky top-0 z-40">
-            <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-3">
+    <div className="min-h-screen bg-slate-50">
+          <header className="border-b border-slate-200 bg-slate-100">
+  <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-2">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
                     <div className="min-w-0 flex-1">
                         <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-slate-700 truncate">Progress Reports</h1>
                         <p className="text-xs sm:text-sm text-slate-600">View and download your term-wise progress reports</p>
                     </div>
+
 
                     <div className="flex items-center flex-wrap justify-end gap-2 sm:gap-3">
                         <div className="relative">
@@ -233,6 +289,7 @@ export default function StudentResultsScreen() {
                                 className="w-full sm:w-44 lg:w-64 rounded-md border border-slate-200 bg-white px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                         </div>
+
 
                         <div className="inline-flex items-stretch rounded-lg border border-slate-200 bg-white overflow-hidden">
                             <button onClick={() => navigate(getDefaultDashboardRoute())} className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition" type="button" title="Home">
@@ -251,10 +308,12 @@ export default function StudentResultsScreen() {
                             </button>
                         </div>
 
+
                         <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
 
+
                         <div className="flex items-center gap-2 sm:gap-3">
-                            <img src={getProfileImageUrl() || "/placeholder.svg"} alt="Profile" className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover" onError={(e) => { e.currentTarget.src = "/assets/profile.png" }} />
+                            <ProfileAvatar />
                             <div className="hidden sm:flex flex-col">
                                 <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">{profile?.full_name || profile?.username || "User"}</span>
                                 <span className="text-xs text-slate-600 capitalize">{profile?.role || ""}</span>
@@ -290,7 +349,8 @@ export default function StudentResultsScreen() {
             {renderContent()}
         </main>
 
-        <style jsx>{`
+
+        <style>{`
             @keyframes fadeInUp {
             from {
                 opacity: 0;
@@ -300,6 +360,10 @@ export default function StudentResultsScreen() {
                 opacity: 1;
                 transform: translateY(0);
             }
+            }
+            
+            .fadeInUp {
+                animation: fadeInUp 0.5s ease-out both;
             }
         `}</style>
     </div>

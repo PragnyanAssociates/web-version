@@ -11,6 +11,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { MdArrowBack } from 'react-icons/md';
 
+
 // --- Icon Components for Header ---
 function UserIcon() {
   return (
@@ -21,6 +22,7 @@ function UserIcon() {
   );
 }
 
+
 function HomeIcon() {
   return (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
@@ -29,6 +31,7 @@ function HomeIcon() {
     </svg>
   );
 }
+
 
 function CalendarIcon() {
   return (
@@ -41,6 +44,7 @@ function CalendarIcon() {
   );
 }
 
+
 function BellIcon() {
   return (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
@@ -52,12 +56,51 @@ function BellIcon() {
     </svg>
   );
 }
+function ProfileAvatar() {
+  const { getProfileImageUrl } = useAuth()
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  
+  const hasValidImage = getProfileImageUrl() && !imageError && imageLoaded
+  
+  return (
+    <div className="relative w-7 h-7 sm:w-9 sm:h-9">
+      {/* Always render the user placeholder */}
+      <div className={`absolute inset-0 rounded-full bg-gray-100 flex items-center justify-center border-2 border-slate-400 transition-opacity duration-200 ${hasValidImage ? 'opacity-0' : 'opacity-100'}`}>
+        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
+        </svg>
+      </div>
+      
+      {/* Profile image overlay */}
+      {getProfileImageUrl() && (
+        <img 
+          src={getProfileImageUrl()} 
+          alt="Profile" 
+          className={`absolute inset-0 w-full h-full rounded-full border border-slate-200 object-cover transition-opacity duration-200 ${hasValidImage ? 'opacity-100' : 'opacity-0'}`}
+          onError={() => {
+            setImageError(true)
+            setImageLoaded(false)
+          }}
+          onLoad={() => {
+            setImageError(false)
+            setImageLoaded(true)
+          }}
+        />
+      )}
+    </div>
+  )
+}   
+
+
+
 
 // --- HELPER FUNCTIONS ---
 const formatDate = (dateString) => {
   if (!dateString) return 'N/A';
   return new Date(dateString).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
 };
+
 
 const StatusPill = ({ status }) => {
   const statusStyle = {
@@ -73,10 +116,12 @@ const StatusPill = ({ status }) => {
   );
 };
 
+
 // --- MAIN SCREEN COMPONENT ---
 const PreAdmissionsScreen = () => {
   const { user, token, logout, getProfileImageUrl, setUnreadCount } = useAuth();
   const navigate = useNavigate();
+
 
   // --- State ---
   const [profile, setProfile] = useState(null);
@@ -91,6 +136,7 @@ const PreAdmissionsScreen = () => {
   const [formData, setFormData] = useState({});
   const [selectedImage, setSelectedImage] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
+
 
   // --- Data Fetching and Side Effects ---
   useEffect(() => {
@@ -110,6 +156,7 @@ const PreAdmissionsScreen = () => {
     const id = setInterval(fetchUnreadNotifications, 60000);
     return () => clearInterval(id);
   }, [token, setUnreadCount]);
+
 
   useEffect(() => {
       async function fetchProfile() {
@@ -132,6 +179,7 @@ const PreAdmissionsScreen = () => {
       fetchProfile();
   }, [user]);
 
+
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
@@ -148,9 +196,11 @@ const PreAdmissionsScreen = () => {
     }
   }, [selectedItem]);
 
+
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
 
   // --- Event Handlers ---
   const handleLogout = () => {
@@ -159,6 +209,7 @@ const PreAdmissionsScreen = () => {
         navigate("/");
     }
   };
+
 
   const getDefaultDashboardRoute = () => {
     if (!user) return '/';
@@ -182,6 +233,7 @@ const PreAdmissionsScreen = () => {
     setModalVisible(true);
   };
 
+
   const handleChoosePhoto = (event) => {
     const file = event.target.files[0];
     if (file) {
@@ -193,6 +245,7 @@ const PreAdmissionsScreen = () => {
     }
   };
 
+
   const handleSave = async () => {
     if (!formData.admission_no || !formData.student_name || !formData.joining_grade) {
       return alert('Admission No, Student Name, and Joining Grade are required.');
@@ -200,6 +253,7 @@ const PreAdmissionsScreen = () => {
     const body = new FormData();
     Object.keys(formData).forEach(key => body.append(key, formData[key] ?? ''));
     if (selectedImage?.file) body.append('photo', selectedImage.file);
+
 
     try {
       const response = isEditing
@@ -212,6 +266,7 @@ const PreAdmissionsScreen = () => {
       alert(error.response?.data?.message || 'An error occurred during save.');
     }
   };
+
 
   const handleDelete = (id) => {
     if (window.confirm("Are you sure you want to delete this record?")) {
@@ -227,15 +282,17 @@ const PreAdmissionsScreen = () => {
     }
   };
 
+
   const filteredData = data.filter(item =>
     item.student_name.toLowerCase().includes(query.toLowerCase()) ||
     item.admission_no.toLowerCase().includes(query.toLowerCase())
   );
 
+
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="border-b border-slate-200 bg-slate-100 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-3">
+    <div className="min-h-screen bg-slate-50 ">
+         <header className="border-b border-slate-200 bg-slate-100">
+  <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-2">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
             <div className="min-w-0 flex-1">
               <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-slate-700 truncate">Pre-Admissions</h1>
@@ -251,7 +308,7 @@ const PreAdmissionsScreen = () => {
               </div>
               <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
               <div className="flex items-center gap-2 sm:gap-3">
-                <img src={getProfileImageUrl() || "/placeholder.svg"} alt="Profile" className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover" onError={(e) => { e.currentTarget.src = "/assets/profile.png" }} />
+                   <ProfileAvatar />
                 <div className="hidden sm:flex flex-col">
                   <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">{profile?.full_name || profile?.username || "User"}</span>
                   <span className="text-xs text-slate-600 capitalize">{profile?.role || ""}</span>
@@ -293,15 +350,13 @@ const PreAdmissionsScreen = () => {
             </div>
           </div>
 
+
           <div className={`md:col-span-7 lg:col-span-8 ${selectedItem ? 'block' : 'hidden md:block'}`}>
             <AdmissionDetailView item={selectedItem} onEdit={handleOpenModal} onDelete={handleDelete} onClearSelection={() => setSelectedItem(null)} onAddNew={() => handleOpenModal()} />
           </div>
         </div>
       </main>
 
-      <button onClick={() => handleOpenModal()} className="hidden md:flex fixed bottom-6 right-6 w-14 h-14 bg-blue-500 hover:bg-blue-600 rounded-full items-center justify-center shadow-lg transition-colors group z-40" title="Add New Application">
-        <FontAwesomeIcon icon={faPlus} className="text-white text-xl group-hover:scale-110 transition-transform" />
-      </button>
 
       {modalVisible && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -341,7 +396,9 @@ const PreAdmissionsScreen = () => {
   );
 };
 
+
 // --- Sub-Components for Master-Detail View ---
+
 
 const AdmissionListItem = ({ item, isSelected, onSelect }) => (
   <button onClick={onSelect} className={`w-full text-left flex items-center p-3 border-b border-slate-200 transition-colors ${isSelected ? 'bg-blue-100' : 'hover:bg-slate-100'}`}>
@@ -353,6 +410,7 @@ const AdmissionListItem = ({ item, isSelected, onSelect }) => (
     <StatusPill status={item.status} />
   </button>
 );
+
 
 const AdmissionDetailView = ({ item, onEdit, onDelete, onClearSelection, onAddNew }) => {
   if (!item) {
@@ -367,6 +425,7 @@ const AdmissionDetailView = ({ item, onEdit, onDelete, onClearSelection, onAddNe
       </div>
     );
   }
+
 
   return (
     <div className="bg-slate-50 rounded-xl border border-slate-200 h-full">
@@ -401,6 +460,7 @@ const AdmissionDetailView = ({ item, onEdit, onDelete, onClearSelection, onAddNe
   );
 };
 
+
 const InfoRow = ({ icon, label, value, isMultiLine = false }) => (
     <div className={`flex ${isMultiLine ? 'items-start' : 'items-center'}`}>
       <FontAwesomeIcon icon={icon} className="text-slate-500 w-5 text-center mt-1 mr-4" />
@@ -410,5 +470,6 @@ const InfoRow = ({ icon, label, value, isMultiLine = false }) => (
       </div>
     </div>
 );
+
 
 export default PreAdmissionsScreen;

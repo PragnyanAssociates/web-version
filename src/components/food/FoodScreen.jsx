@@ -47,6 +47,7 @@ function BellIcon() {
     </svg>
   );
 }
+
 // Add this ProfileAvatar component code after your existing icon components
 function ProfileAvatar({ className = "w-7 h-7 sm:w-9 sm:h-9" }) {
   const { getProfileImageUrl } = useAuth()
@@ -81,10 +82,8 @@ function ProfileAvatar({ className = "w-7 h-7 sm:w-9 sm:h-9" }) {
     />
   )}
 </div>
-
   )
 }
-
 
 const ORDERED_DAYS = [
   { full: 'Monday', short: 'Mon' }, { full: 'Tuesday', short: 'Tue' }, { full: 'Wednesday', short: 'Wed' },
@@ -101,9 +100,19 @@ const FoodScreen = () => {
   const { user, token, logout, getProfileImageUrl, setUnreadCount } = useAuth();
   const navigate = useNavigate();
 
-  // --- State for Header ---
-  const [profile, setProfile] = useState(null);
-  const [loadingProfile, setLoadingProfile] = useState(true);
+  // --- State for Header (FIXED: Initialize profile from user data to prevent flickering) ---
+  const [profile, setProfile] = useState(() => {
+    if (user) {
+      return {
+        id: user.id,
+        username: user.username || "Unknown",
+        full_name: user.full_name || user.username || "User",
+        role: user.role || "user",
+      };
+    }
+    return null;
+  });
+  const [loadingProfile, setLoadingProfile] = useState(!!user?.id);
   const [unreadCount, setLocalUnreadCount] = useState(0);
   const [query, setQuery] = useState("");
 
@@ -121,7 +130,6 @@ const FoodScreen = () => {
         return;
       }
       try {
-        // ★★★ FIXED: Use apiClient correctly ★★★
         const res = await apiClient.get('/notifications');
         const count = Array.isArray(res.data) ? res.data.filter((n) => !n.is_read).length : 0;
         setLocalUnreadCount(count);
@@ -143,14 +151,14 @@ const FoodScreen = () => {
       }
       setLoadingProfile(true);
       try {
-        // ★★★ FIXED: Use apiClient correctly ★★★
         const res = await apiClient.get(`/profiles/${user.id}`);
         setProfile(res.data);
       } catch (error) {
-        setProfile({
+        // Keep the initialized profile data on error
+        setProfile(prev => prev || {
           id: user.id,
           username: user.username || "Unknown",
-          full_name: user.full_name || "User",
+          full_name: user.full_name || user.username || "User",
           role: user.role || "user",
         });
       } finally {
@@ -163,7 +171,6 @@ const FoodScreen = () => {
   // --- Hooks for Food Menu Functionality ---
   const fetchMenu = useCallback(() => {
     setLoading(true);
-    // ★★★ FIXED: Use apiClient correctly like mobile version ★★★
     apiClient.get('/food-menu')
       .then(res => setMenuData(res.data))
       .catch(() => alertError("Error", "Could not fetch the food menu."))
@@ -222,7 +229,6 @@ const FoodScreen = () => {
 
     closeModal();
 
-    // ★★★ FIXED: Use apiClient consistently like mobile version ★★★
     apiClient.put(url, body)
       .then(() => {
         if (mode === 'editTime') {
@@ -236,9 +242,9 @@ const FoodScreen = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="border-b border-slate-200 bg-slate-100 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-3">
+    <div className="min-h-screen bg-slate-50">
+     <header className="border-b border-slate-200 bg-slate-100">
+  <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-2">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
             <div className="min-w-0 flex-1">
               <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-slate-700 truncate">Weekly Food Menu</h1>
@@ -292,24 +298,22 @@ const FoodScreen = () => {
               <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
 
               <div className="flex items-center gap-2 sm:gap-3">
-                 {/* <img 
-  src={imageError ? "/assets/profile.png" : (getProfileImageUrl() || "/assets/profile.png")} 
-  alt="Profile" 
-  className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover" 
-  onError={(e) => { 
-    if (!imageError) {
-      setImageError(true)
-    }
-  }}
-  onLoad={() => setImageError(false)}
-/> */}
-<ProfileAvatar />
+                <ProfileAvatar />
 
                 <div className="hidden sm:flex flex-col">
-                  <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">
-                    {profile?.full_name || profile?.username || "User"}
-                  </span>
-                  <span className="text-xs text-slate-600 capitalize">{profile?.role || ""}</span>
+                  {loadingProfile ? (
+                    <>
+                      <div className="h-4 bg-gray-200 rounded animate-pulse w-20 mb-1"></div>
+                      <div className="h-3 bg-gray-200 rounded animate-pulse w-16"></div>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">
+                        {profile?.full_name || profile?.username || "User"}
+                      </span>
+                      <span className="text-xs text-slate-600 capitalize">{profile?.role || ""}</span>
+                    </>
+                  )}
                 </div>
                 <button
                   onClick={handleLogout}
@@ -349,7 +353,7 @@ const FoodScreen = () => {
             <span>Back to Dashboard</span>
           </button>
         </div>
-        {loading || loadingProfile ? (
+        {loading ? (
           <div className="flex justify-center items-center py-20">
             <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
           </div>

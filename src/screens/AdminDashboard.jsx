@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "../context/AuthContext.tsx"
 import { API_BASE_URL } from "../apiConfig"
@@ -50,6 +50,43 @@ function BellIcon() {
     </svg>
   )
 }
+function ProfileAvatar() {
+  const { getProfileImageUrl } = useAuth()
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  
+  const hasValidImage = getProfileImageUrl() && !imageError && imageLoaded
+  
+  return (
+    <div className="relative w-7 h-7 sm:w-9 sm:h-9">
+      {/* Always render the user placeholder */}
+      <div className={`absolute inset-0 rounded-full bg-gray-100 flex items-center justify-center border-2 border-slate-400 transition-opacity duration-200 ${hasValidImage ? 'opacity-0' : 'opacity-100'}`}>
+        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
+        </svg>
+      </div>
+      
+      {/* Profile image overlay */}
+      {getProfileImageUrl() && (
+        <img 
+          src={getProfileImageUrl()} 
+          alt="Profile" 
+          className={`absolute inset-0 w-full h-full rounded-full border border-slate-200 object-cover transition-opacity duration-200 ${hasValidImage ? 'opacity-100' : 'opacity-0'}`}
+          onError={() => {
+            setImageError(true)
+            setImageLoaded(false)
+          }}
+          onLoad={() => {
+            setImageError(false)
+            setImageLoaded(true)
+          }}
+        />
+      )}
+    </div>
+  )
+}   
+
+
 
 const allQuickAccessItems = [
   {
@@ -120,7 +157,7 @@ const allQuickAccessItems = [
   },
   {
     id: "qa8",
-    title: "Digital Labs",
+    title: "Labs",
     imageSource: "https://cdn-icons-png.flaticon.com/128/9562/9562280.png",
     navigateTo: "/TeacherAdminLabsScreen",
   },
@@ -233,6 +270,12 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("home")
   const [query, setQuery] = useState("")
   const [showAllMobile, setShowAllMobile] = useState(false)
+  // ADD these new states after line: const [showAllMobile, setShowAllMobile] = useState(false)
+const [showDropdown, setShowDropdown] = useState(false)
+const [selectedIndex, setSelectedIndex] = useState(-1)
+const searchRef = useRef(null)
+const dropdownRef = useRef(null)
+
 
  useEffect(() => {
   async function fetchUnreadNotifications() {
@@ -283,6 +326,22 @@ export default function AdminDashboard() {
     }
     fetchProfile()
   }, [user])
+// ADD this useEffect after your existing ones:
+useEffect(() => {
+  const handleClickOutside = (event) => {
+    if (
+      searchRef.current && 
+      !searchRef.current.contains(event.target) &&
+      dropdownRef.current && 
+      !dropdownRef.current.contains(event.target)
+    ) {
+      setShowDropdown(false)
+      setSelectedIndex(-1)
+    }
+  }
+  document.addEventListener('mousedown', handleClickOutside)
+  return () => document.removeEventListener('mousedown', handleClickOutside)
+}, [])
 
   const handleLogout = () => {
     if (window.confirm("Are you sure you want to log out?")) {
@@ -290,8 +349,60 @@ export default function AdminDashboard() {
       navigate("/")
     }
   }
+  // ADD these functions after handleLogout:
+const searchResults = allQuickAccessItems.filter((item) => {
+  const searchTerm = query.trim().toLowerCase()
+  if (!searchTerm) return false
+  return item.title.toLowerCase().startsWith(searchTerm)
+})
 
-  const filteredItems = allQuickAccessItems.filter((i) => i.title.toLowerCase().includes(query.trim().toLowerCase()))
+const handleSearchChange = (e) => {
+  const value = e.target.value
+  setQuery(value)
+  setSelectedIndex(-1)
+  setShowDropdown(value.trim().length > 0)
+}
+
+const handleSearchFocus = () => {
+  if (query.trim().length > 0) {
+    setShowDropdown(true)
+  }
+}
+
+const handleSelectItem = (item) => {
+  setQuery("")
+  setShowDropdown(false)
+  setSelectedIndex(-1)
+  navigate(item.navigateTo)
+}
+
+const handleSearchKeyDown = (e) => {
+  if (!showDropdown || searchResults.length === 0) return
+  switch (e.key) {
+    case 'ArrowDown':
+      e.preventDefault()
+      setSelectedIndex(prev => prev < searchResults.length - 1 ? prev + 1 : 0)
+      break
+    case 'ArrowUp':
+      e.preventDefault()
+      setSelectedIndex(prev => prev > 0 ? prev - 1 : searchResults.length - 1)
+      break
+    case 'Enter':
+      e.preventDefault()
+      if (selectedIndex >= 0 && selectedIndex < searchResults.length) {
+        handleSelectItem(searchResults[selectedIndex])
+      }
+      break
+    case 'Escape':
+      setShowDropdown(false)
+      setSelectedIndex(-1)
+      searchRef.current?.blur()
+      break
+  }
+}
+
+
+ const filteredItems = allQuickAccessItems.filter((i) => i.title.toLowerCase().startsWith(query.trim().toLowerCase()))
 
   const kpis = [
     { id: "kpi-students", label: "Students", value: "1,240" },
@@ -654,7 +765,7 @@ export default function AdminDashboard() {
     // +++ UPDATED BACKGROUND COLOR +++
     <div className="min-h-screen bg-slate-50">
       {/* +++ UPDATED HEADER BACKGROUND COLOR +++ */}
-      <header className="border-b border-slate-200 bg-slate-50">
+      <header className="border-b border-slate-200 bg-slate-100">
   <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-2">
     {/* This parent div now wraps elements on mobile */}
     <div className="flex flex-wrap items-center justify-between gap-y-3 gap-x-4">
@@ -673,7 +784,50 @@ export default function AdminDashboard() {
       <div className="w-full flex items-center justify-end gap-2 sm:w-auto sm:justify-start sm:gap-3">
         <label htmlFor="module-search" className="sr-only">Search modules</label>
         <div className="relative flex-grow sm:flex-grow-0">
-          <input id="module-search" type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search modules" className="w-full rounded-md border border-slate-200 bg-white px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+         <input 
+  ref={searchRef}
+  id="module-search" 
+  type="text" 
+  value={query} 
+  onChange={handleSearchChange}
+  onFocus={handleSearchFocus}
+  onKeyDown={handleSearchKeyDown}
+  placeholder="Search modules" 
+  className="w-full rounded-md border border-slate-200 bg-white px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+  autoComplete="off"
+/>
+
+{/* ADD this dropdown right after the input: */}
+{showDropdown && searchResults.length > 0 && (
+  <div 
+    ref={dropdownRef}
+    className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-md shadow-lg z-50 max-h-80 overflow-y-auto"
+  >
+    <div className="p-2 border-b border-slate-100 bg-slate-50">
+      <p className="text-xs text-slate-600 font-medium">
+        Modules starting with "{query}" ({searchResults.length} found)
+      </p>
+    </div>
+    {searchResults.map((item, index) => (
+      <button
+        key={item.id}
+        onClick={() => handleSelectItem(item)}
+        className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-b-0 ${
+          index === selectedIndex ? 'bg-blue-50 border-l-2 border-blue-500' : ''
+        }`}
+      >
+        <img 
+          src={item.imageSource || "/placeholder.svg"} 
+          alt="" 
+          className="w-6 h-6 object-contain flex-shrink-0"
+        />
+        <span className="text-sm text-slate-900 truncate">
+          {item.title}
+        </span>
+      </button>
+    ))}
+  </div>
+)}
         </div>
         <div className="inline-flex items-stretch rounded-lg border border-slate-200 bg-white overflow-hidden">
           <button onClick={() => setActiveTab("home")} className={`flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm transition ${activeTab === "home" ? "bg-blue-600 text-white" : "text-slate-700 hover:bg-slate-50"}`} type="button" title="Home"><HomeIcon /><span className="hidden md:inline">Home</span></button>
@@ -690,7 +844,7 @@ export default function AdminDashboard() {
       <div className="w-full flex items-center justify-between gap-2 sm:w-auto sm:justify-start sm:gap-3">
         {/* All profile items are now in a single flex container to stay grouped together */}
 <div className="w-full flex items-center justify-end gap-2 sm:w-auto sm:gap-3">
-    <img src={getProfileImageUrl() || "/placeholder.svg"} alt="Profile" className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover" onError={(e) => { e.currentTarget.src = "/assets/profile.png" }} />
+       <ProfileAvatar />
     <div className="hidden sm:flex flex-col">
         <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">{profile?.full_name || profile?.username || "User"}</span>
         <span className="text-xs text-slate-600 capitalize">{profile?.role || ""}</span>
@@ -704,7 +858,7 @@ export default function AdminDashboard() {
       </div>
     </div>
 
-    <section className="mt-4 pt-3 border-t border-slate-200" aria-label="Key metrics">
+    <section className="mt-4 pt-3 border-t border-slate-200 " aria-label="Key metrics">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
         {kpis.map((kpi) => (
           <div key={kpi.id} className="flex flex-col items-center rounded-lg border border-slate-200 bg-white p-1 sm:p-1">

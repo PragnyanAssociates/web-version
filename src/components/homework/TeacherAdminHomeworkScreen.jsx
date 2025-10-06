@@ -20,6 +20,43 @@ function CalendarIcon() {
 function BellIcon() {
     return ( <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 00-5-5.917V4a1 1 0 10-2 0v1.083A6 6 0 006 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg> );
 }
+function ProfileAvatar() {
+  const { getProfileImageUrl } = useAuth()
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  
+  const hasValidImage = getProfileImageUrl() && !imageError && imageLoaded
+  
+  return (
+    <div className="relative w-7 h-7 sm:w-9 sm:h-9">
+      {/* Always render the user placeholder */}
+      <div className={`absolute inset-0 rounded-full bg-gray-100 flex items-center justify-center border-2 border-slate-400 transition-opacity duration-200 ${hasValidImage ? 'opacity-0' : 'opacity-100'}`}>
+        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
+        </svg>
+      </div>
+      
+      {/* Profile image overlay */}
+      {getProfileImageUrl() && (
+        <img 
+          src={getProfileImageUrl()} 
+          alt="Profile" 
+          className={`absolute inset-0 w-full h-full rounded-full border border-slate-200 object-cover transition-opacity duration-200 ${hasValidImage ? 'opacity-100' : 'opacity-0'}`}
+          onError={() => {
+            setImageError(true)
+            setImageLoaded(false)
+          }}
+          onLoad={() => {
+            setImageError(false)
+            setImageLoaded(true)
+          }}
+        />
+      )}
+    </div>
+  )
+}   
+
+
 
 // --- Reusable Application Header ---
 const AppHeader = ({ title, subtitle }) => {
@@ -77,8 +114,8 @@ const AppHeader = ({ title, subtitle }) => {
     };
 
     return (
-        <header className="border-b border-slate-200 bg-slate-100 sticky top-0 z-40">
-            <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-3">
+            <header className="border-b border-slate-200 bg-slate-100">
+  <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-2">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
                     <div className="min-w-0 flex-1">
                         <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-slate-700 truncate">{title}</h1>
@@ -104,7 +141,7 @@ const AppHeader = ({ title, subtitle }) => {
                         </div>
                         <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" />
                         <div className="flex items-center gap-2 sm:gap-3">
-                            <img src={getProfileImageUrl() || "/placeholder.svg"} alt="Profile" className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover" onError={(e) => { e.currentTarget.src = "/assets/profile.png" }} />
+                                <ProfileAvatar />
                             <div className="hidden sm:flex flex-col"><span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">{profile?.full_name || "User"}</span><span className="text-xs text-slate-600 capitalize">{profile?.role || ""}</span></div>
                             <button onClick={handleLogout} className="inline-flex items-center rounded-md bg-blue-600 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><span className="hidden sm:inline">Logout</span><span className="sm:hidden">Exit</span></button>
                             <button onClick={() => navigate("/NotificationsScreen")} className="relative inline-flex items-center justify-center rounded-full border border-slate-200 bg-white p-1.5 sm:p-2 text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" title="Notifications" type="button">

@@ -1,12 +1,15 @@
+// 📂 File: src/screens/homework/StudentHomeworkScreen.jsx (UPDATED WEB VERSION WITH DELETE FUNCTIONALITY)
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from "react-router-dom";
 import { useAuth } from '../../context/AuthContext.tsx';
 // ★★★ 1. IMPORT apiClient AND SERVER_URL, REMOVE API_BASE_URL ★★★
 import apiClient from '../../api/client';
 import { SERVER_URL } from '../../apiConfig';
-import { FaBook, FaCalendarAlt, FaCalendarCheck, FaPaperclip, FaUpload, FaCheck, FaCheckCircle, FaHourglassHalf, FaGraduationCap, FaChevronDown, FaTimesCircle } from 'react-icons/fa';
+import { FaBook, FaCalendarAlt, FaCalendarCheck, FaPaperclip, FaUpload, FaCheck, FaCheckCircle, FaHourglassHalf, FaGraduationCap, FaChevronDown, FaTimesCircle, FaTrash } from 'react-icons/fa';
 import { AiOutlineLoading3Quarters } from 'react-icons/ai';
-import { MdAssignment, MdArrowBack, MdInfoOutline } from 'react-icons/md';
+import { MdAssignment, MdArrowBack, MdInfoOutline, MdDelete } from 'react-icons/md';
+
 
 // --- Icon Components for Header (Unchanged) ---
 function UserIcon() {
@@ -18,6 +21,7 @@ function UserIcon() {
   );
 }
 
+
 function HomeIcon() {
   return (
     <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
@@ -26,6 +30,7 @@ function HomeIcon() {
     </svg>
   );
 }
+
 
 function CalendarIcon() {
   return (
@@ -37,6 +42,7 @@ function CalendarIcon() {
     </svg>
   );
 }
+
 
 function BellIcon() {
   return (
@@ -86,9 +92,11 @@ function ProfileAvatar() {
 } 
 
 
+
 const StudentHomeworkScreen = () => {
   const { user, token, logout, getProfileImageUrl, setUnreadCount } = useAuth();
   const navigate = useNavigate();
+
 
   // --- State for Header ---
   const [profile, setProfile] = useState(null);
@@ -99,9 +107,11 @@ const StudentHomeworkScreen = () => {
   // --- State for Homework ---
   const [assignments, setAssignments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  // ★ This state will now handle loading for both submitting and deleting
   const [isSubmitting, setIsSubmitting] = useState(null);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState(null);
   const [filter, setFilter] = useState('All'); // 'All', 'Pending', 'Completed'
+
 
   // --- Hooks for Header Functionality ---
   useEffect(() => {
@@ -125,6 +135,7 @@ const StudentHomeworkScreen = () => {
     const id = setInterval(fetchUnreadNotifications, 60000);
     return () => clearInterval(id);
   }, [token, setUnreadCount]);
+
 
   useEffect(() => {
       async function fetchProfile() {
@@ -151,6 +162,7 @@ const StudentHomeworkScreen = () => {
       fetchProfile();
   }, [user]);
 
+
   // --- Helper Functions ---
   const handleLogout = () => {
     if (window.confirm("Are you sure you want to log out?")) {
@@ -159,6 +171,7 @@ const StudentHomeworkScreen = () => {
     }
   };
 
+
   const getDefaultDashboardRoute = () => {
     if (!user) return '/';
     if (user.role === 'admin') return '/AdminDashboard';
@@ -166,6 +179,7 @@ const StudentHomeworkScreen = () => {
     if (user.role === 'student') return '/StudentDashboard';
     return '/';
   };
+
 
   const fetchAssignments = useCallback(async () => {
     if (!user) return;
@@ -196,7 +210,9 @@ const StudentHomeworkScreen = () => {
     }
   }, [user]);
 
+
   useEffect(() => { fetchAssignments(); }, [fetchAssignments]);
+
 
   const handleSubmission = async (assignmentId) => {
     if (!user) return;
@@ -205,7 +221,10 @@ const StudentHomeworkScreen = () => {
     input.accept = '*/*';
     input.onchange = async (e) => {
       const file = e.target.files[0];
-      if (!file) return;
+      if (!file) {
+        console.log('User closed picker without selecting a file.');
+        return;
+      }
       setIsSubmitting(assignmentId);
       const formData = new FormData();
       formData.append('student_id', user.id);
@@ -226,6 +245,32 @@ const StudentHomeworkScreen = () => {
     };
     input.click();
   };
+
+  // ★ ADD a function to handle deleting a submission - MATCHES MOBILE VERSION
+  const handleDeleteSubmission = async (submissionId, assignmentId) => {
+    if (!user) return;
+    
+    const confirmDelete = window.confirm(
+      "Are you sure you want to delete your submission? This action cannot be undone."
+    );
+    
+    if (confirmDelete) {
+      setIsSubmitting(assignmentId); // Reuse loading state for visual feedback
+      try {
+        // The body for a DELETE request in axios is passed in a 'data' object
+        await apiClient.delete(`/homework/submission/${submissionId}`, {
+          data: { student_id: user.id }
+        });
+        alert("Your submission has been deleted.");
+        fetchAssignments(); // Refresh the list to show the "Submit" button again
+      } catch (error) {
+        alert(error.response?.data?.message || "Could not delete submission.");
+      } finally {
+        setIsSubmitting(null);
+      }
+    }
+  };
+
 
   const filteredAssignments = useMemo(() => {
     return assignments
@@ -248,6 +293,7 @@ const StudentHomeworkScreen = () => {
     return assignments.find(a => a.id === selectedAssignmentId);
   }, [assignments, selectedAssignmentId]);
 
+
   useEffect(() => {
     if (filteredAssignments.length > 0 && !filteredAssignments.find(a => a.id === selectedAssignmentId)) {
         setSelectedAssignmentId(filteredAssignments[0].id);
@@ -257,9 +303,9 @@ const StudentHomeworkScreen = () => {
   }, [filteredAssignments, selectedAssignmentId]);
   
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="border-b border-slate-200 bg-slate-100 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-3">
+    <div className="min-h-screen bg-slate-50">
+          <header className="border-b border-slate-200 bg-slate-100">
+  <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-2">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
             <div className="min-w-0 flex-1">
                 <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-slate-700 truncate">My Assignments & Homework</h1>
@@ -322,6 +368,7 @@ const StudentHomeworkScreen = () => {
           </button>
         </div>
 
+
         {/* --- Main Content Area --- */}
         <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-6 lg:gap-8">
             {/* Left Panel: Assignment List */}
@@ -351,6 +398,7 @@ const StudentHomeworkScreen = () => {
                 </div>
             </div>
 
+
             {/* Right Panel: Assignment Details */}
             <div className="lg:col-span-2 xl:col-span-3">
                 {isLoading ? (
@@ -358,7 +406,12 @@ const StudentHomeworkScreen = () => {
                         <AiOutlineLoading3Quarters className="h-10 w-10 text-blue-500 animate-spin" />
                     </div>
                 ) : selectedAssignment ? (
-                    <AssignmentDetail assignment={selectedAssignment} onSubmit={handleSubmission} isSubmitting={isSubmitting === selectedAssignment.id} />
+                    <AssignmentDetail 
+                      assignment={selectedAssignment} 
+                      onSubmit={handleSubmission} 
+                      onDelete={handleDeleteSubmission}
+                      isSubmitting={isSubmitting === selectedAssignment.id} 
+                    />
                 ) : (
                     <div className="flex flex-col items-center justify-center text-center bg-slate-50 rounded-lg shadow-sm border border-slate-200/80 p-10 h-full">
                         <MdAssignment size={48} className="text-slate-300 mb-4" />
@@ -373,12 +426,15 @@ const StudentHomeworkScreen = () => {
   );
 };
 
+
 const AssignmentListItem = ({ item, isSelected, onSelect }) => {
     const dueDate = new Date(item.due_date);
     const isOverdue = !item.submission_id && dueDate < new Date();
     const isCompleted = !!item.submission_id;
 
+
     const statusDotColor = isCompleted ? 'bg-green-500' : isOverdue ? 'bg-red-500' : 'bg-orange-500';
+
 
     return (
         <li className="border-b border-slate-200/80 last:border-b-0">
@@ -397,11 +453,15 @@ const AssignmentListItem = ({ item, isSelected, onSelect }) => {
     );
 };
 
-const AssignmentDetail = ({ assignment, onSubmit, isSubmitting }) => {
+
+// ★ UPDATE AssignmentDetail to accept 'onDelete' and render the correct button
+const AssignmentDetail = ({ assignment, onSubmit, onDelete, isSubmitting }) => {
     if (!assignment) return null;
+
 
     const dueDate = new Date(assignment.due_date);
     const isOverdue = !assignment.submission_id && dueDate < new Date();
+
 
     const getStatusInfo = () => {
         const statusText = assignment.submission_id ? (assignment.status || 'Submitted') : 'Pending';
@@ -418,6 +478,7 @@ const AssignmentDetail = ({ assignment, onSubmit, isSubmitting }) => {
         // ★★★ 8. USE SERVER_URL FOR ATTACHMENTS - MATCHES MOBILE VERSION ★★★
         if (assignment.attachment_path) window.open(`${SERVER_URL}${assignment.attachment_path}`, '_blank');
     };
+
 
     return (
         <div className="bg-slate-50 rounded-lg shadow-sm border border-slate-200/80">
@@ -436,6 +497,7 @@ const AssignmentDetail = ({ assignment, onSubmit, isSubmitting }) => {
                 </div>
             </div>
 
+
             {/* Body */}
             <div className="p-5 space-y-6">
                 {assignment.description && (
@@ -444,6 +506,7 @@ const AssignmentDetail = ({ assignment, onSubmit, isSubmitting }) => {
                         <p className="text-slate-600 text-sm leading-relaxed bg-slate-100 p-4 rounded-md border border-slate-200 whitespace-pre-wrap">{assignment.description}</p>
                     </div>
                 )}
+
 
                 {status.text === 'Graded' && assignment.grade && (
                     <div>
@@ -470,6 +533,7 @@ const AssignmentDetail = ({ assignment, onSubmit, isSubmitting }) => {
                 )}
             </div>
 
+
             {/* Footer / Actions */}
             <div className="p-5 bg-slate-100/70 border-t border-slate-200 rounded-b-lg flex flex-col sm:flex-row justify-end items-center gap-3">
                  {assignment.attachment_path && (
@@ -478,15 +542,53 @@ const AssignmentDetail = ({ assignment, onSubmit, isSubmitting }) => {
                         View Attachment
                     </button>
                 )}
-                {!assignment.submission_id && (
-                    <button onClick={() => onSubmit(assignment.id)} disabled={isSubmitting} className={`w-full sm:w-auto flex items-center justify-center px-5 py-2.5 rounded-md font-semibold transition-all duration-200 text-sm ${isSubmitting ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white'}`}>
-                        {isSubmitting ? (<><AiOutlineLoading3Quarters className="animate-spin mr-2" />Uploading...</>) : (<><FaUpload className="mr-2" />Submit Homework</>)}
+
+                {/* ★ MODIFY BUTTON LOGIC to show submit, delete, or nothing - MATCHES MOBILE VERSION */}
+                {assignment.submission_id && status.text !== 'Graded' ? (
+                    // If submitted but NOT graded, show the delete button
+                    <button 
+                      onClick={() => onDelete(assignment.submission_id, assignment.id)} 
+                      disabled={isSubmitting} 
+                      className={`w-full sm:w-auto flex items-center justify-center px-5 py-2.5 rounded-md font-semibold transition-all duration-200 text-sm ${isSubmitting ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 text-white'}`}
+                    >
+                        {isSubmitting ? (
+                          <>
+                            <AiOutlineLoading3Quarters className="animate-spin mr-2" />
+                            Deleting...
+                          </>
+                        ) : (
+                          <>
+                            <MdDelete className="mr-2" />
+                            Delete Submission
+                          </>
+                        )}
+                    </button>
+                ) : !assignment.submission_id && (
+                    // If not submitted, show the submit button
+                    <button 
+                      onClick={() => onSubmit(assignment.id)} 
+                      disabled={isSubmitting} 
+                      className={`w-full sm:w-auto flex items-center justify-center px-5 py-2.5 rounded-md font-semibold transition-all duration-200 text-sm ${isSubmitting ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white'}`}
+                    >
+                        {isSubmitting ? (
+                          <>
+                            <AiOutlineLoading3Quarters className="animate-spin mr-2" />
+                            Uploading...
+                          </>
+                        ) : (
+                          <>
+                            <FaUpload className="mr-2" />
+                            Submit Homework
+                          </>
+                        )}
                     </button>
                 )}
+                {/* If the assignment is graded, no action button will appear, which is correct. */}
             </div>
         </div>
     );
 };
+
 
 const DetailRow = ({ icon, label, value }) => (
     <div className="flex items-center gap-3">
@@ -497,5 +599,6 @@ const DetailRow = ({ icon, label, value }) => (
         </div>
     </div>
 );
+
 
 export default StudentHomeworkScreen;

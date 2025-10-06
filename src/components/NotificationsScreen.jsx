@@ -54,6 +54,7 @@ function RefreshIcon({ className }) {
     </svg>
   );
 }
+
 function ProfileAvatar() {
   const { getProfileImageUrl } = useAuth()
   const [imageError, setImageError] = useState(false)
@@ -89,7 +90,6 @@ function ProfileAvatar() {
     </div>
   )
 } 
-
 
 const notificationIcons = {
   default: 'https://cdn-icons-png.flaticon.com/128/8297/8297354.png',
@@ -267,10 +267,10 @@ const NotificationsScreen = ({ onUnreadCountChange }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100">
+    <div className="min-h-screen bg-slate-100 flex flex-col">
       {/* --- HEADER --- */}
-      <header className="border-b border-slate-200 bg-slate-100 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-3">
+      <header className="border-b border-slate-200 bg-slate-100">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-2">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
             <div className="min-w-0 flex-1">
               <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-slate-700 truncate">Notifications</h1>
@@ -320,8 +320,7 @@ const NotificationsScreen = ({ onUnreadCountChange }) => {
               </div>
               <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
               <div className="flex items-center gap-2 sm:gap-3">
-               
-<ProfileAvatar />
+                <ProfileAvatar />
                 <div className="hidden sm:flex flex-col">
                   <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">
                     {profile?.full_name || profile?.username || "User"}
@@ -356,113 +355,124 @@ const NotificationsScreen = ({ onUnreadCountChange }) => {
       </header>
 
       {/* --- MAIN CONTENT --- */}
-      <main className="bg-slate-50">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Filter + Refresh */}
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center p-1 space-x-1 bg-slate-200/60 rounded-lg">
-              {['all', 'unread', 'read'].map(status => (
-                <button
-                  key={status}
-                  onClick={() => setFilterStatus(status)}
-                  className={`relative px-4 py-1.5 rounded-md text-sm font-semibold transition-colors duration-200 ${
-                    filterStatus === status ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  {status.charAt(0).toUpperCase() + status.slice(1)}
-                  {status === 'unread' && unreadCountOnPage > 0 && (
-                    <span className="absolute -top-2 -right-2 flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full">
-                      {unreadCountOnPage}
-                    </span>
-                  )}
-                </button>
-              ))}
+      <main className="flex-1 bg-slate-50">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Content Container with consistent spacing */}
+          <div className="min-h-[calc(100vh-120px)] flex flex-col py-8">
+            {/* Filter + Refresh */}
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center p-1 space-x-1 bg-slate-200/60 rounded-lg">
+                {['all', 'unread', 'read'].map(status => (
+                  <button
+                    key={status}
+                    onClick={() => setFilterStatus(status)}
+                    className={`relative px-4 py-1.5 rounded-md text-sm font-semibold transition-colors duration-200 ${
+                      filterStatus === status ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    {status.charAt(0).toUpperCase() + status.slice(1)}
+                    {status === 'unread' && unreadCountOnPage > 0 && (
+                      <span className="absolute -top-2 -right-2 flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full">
+                        {unreadCountOnPage}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="p-2 rounded-full text-slate-500 hover:bg-slate-200/80 hover:text-slate-800 transition-colors disabled:opacity-50"
+                title="Refresh Notifications"
+              >
+                <RefreshIcon className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
+              </button>
             </div>
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="p-2 rounded-full text-slate-500 hover:bg-slate-200/80 hover:text-slate-800 transition-colors disabled:opacity-50"
-              title="Refresh Notifications"
-            >
-              <RefreshIcon className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
 
-          {/* Notifications */}
-          <div>
-            {loading ? (
-              <div className="text-center py-20">
-                <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-500 rounded-full animate-spin mx-auto"></div>
-                <p className="mt-4 text-slate-500">Loading notifications...</p>
-              </div>
-            ) : error ? (
-              <div className="text-center py-20 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-2xl mb-2">😟</p>
-                <p className="font-semibold text-red-700 mb-1">Oops, something went wrong.</p>
-                <p className="text-red-600 text-sm mb-4">{error}</p>
-                <button
-                  onClick={handleRefresh}
-                  className="px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-colors"
-                >
-                  Try Again
-                </button>
-              </div>
-            ) : filteredNotifications.length === 0 ? (
-              <div className="text-center py-20 bg-slate-100/80 rounded-lg">
-                <p className="text-4xl mb-3">🎉</p>
-                <p className="font-semibold text-slate-700 text-lg">You're all caught up!</p>
-                <p className="text-slate-500 mt-1">There are no notifications to show.</p>
-              </div>
-            ) : (
-              <div className="relative pl-5">
-                {/* Vertical timeline bar */}
-                <div className="absolute left-5 top-0 h-full w-0.5 bg-slate-200" aria-hidden="true"></div>
-                <div className="space-y-6">
-                  {filteredNotifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      className={`relative pl-8 ${!notification.is_read ? 'cursor-pointer' : ''}`}
-                      onClick={() => handleMarkAsRead(notification.id)}
-                    >
-                      {/* Timeline Icon Marker */}
-                      <div className="absolute left-5 top-0.5 -translate-x-1/2 flex items-center justify-center">
-                        <div className="w-10 h-10 rounded-full bg-white ring-4 ring-slate-50 flex items-center justify-center">
-                          <img
-                            src={getIconForTitle(notification.title)}
-                            alt=""
-                            className="w-6 h-6 object-contain"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Notification Card */}
-                      <div
-                        className={`p-4 rounded-lg border transition-all duration-200 ${
-                          notification.is_read
-                            ? 'bg-white border-slate-200'
-                            : 'bg-blue-50/70 border-blue-200 hover:border-blue-300 hover:bg-blue-50'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between">
-                          <h3 className={`text-base pr-2 ${notification.is_read ? 'font-medium text-slate-600' : 'font-bold text-slate-800'}`}>
-                            {notification.title}
-                          </h3>
-                          <p
-                            className="text-xs text-slate-400 flex-shrink-0"
-                            title={format(new Date(notification.created_at), "MMM d, yyyy - h:mm a")}
-                          >
-                            {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
-                          </p>
-                        </div>
-                        <p className={`mt-1 text-sm leading-relaxed ${notification.is_read ? 'text-slate-500' : 'text-slate-700'}`}>
-                          {notification.message}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+            {/* Notifications Container - Flexible growth */}
+            <div className="flex-1 flex flex-col">
+              {loading ? (
+                <div className="flex-1 flex items-center justify-center min-h-[400px]">
+                  <div className="text-center">
+                    <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-500 rounded-full animate-spin mx-auto"></div>
+                    <p className="mt-4 text-slate-500">Loading notifications...</p>
+                  </div>
                 </div>
-              </div>
-            )}
+              ) : error ? (
+                <div className="flex-1 flex items-center justify-center min-h-[400px]">
+                  <div className="text-center py-12 px-6 bg-red-50 border border-red-200 rounded-lg max-w-md">
+                    <p className="text-2xl mb-2">😟</p>
+                    <p className="font-semibold text-red-700 mb-1">Oops, something went wrong.</p>
+                    <p className="text-red-600 text-sm mb-4">{error}</p>
+                    <button
+                      onClick={handleRefresh}
+                      className="px-4 py-2 bg-red-600 text-white text-sm font-semibold rounded-lg hover:bg-red-700 transition-colors"
+                    >
+                      Try Again
+                    </button>
+                  </div>
+                </div>
+              ) : filteredNotifications.length === 0 ? (
+                <div className="flex-1 flex items-center justify-center min-h-[400px]">
+                  <div className="text-center py-12 px-6 bg-slate-100/80 rounded-lg max-w-md">
+                    <p className="text-4xl mb-3">🎉</p>
+                    <p className="font-semibold text-slate-700 text-lg">You're all caught up!</p>
+                    <p className="text-slate-500 mt-1">There are no notifications to show.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-1">
+                  <div className="relative pl-5">
+                    {/* Vertical timeline bar */}
+                    <div className="absolute left-5 top-0 h-full w-0.5 bg-slate-200" aria-hidden="true"></div>
+                    <div className="space-y-6 pb-8">
+                      {filteredNotifications.map((notification) => (
+                        <div
+                          key={notification.id}
+                          className={`relative pl-8 ${!notification.is_read ? 'cursor-pointer' : ''}`}
+                          onClick={() => handleMarkAsRead(notification.id)}
+                        >
+                          {/* Timeline Icon Marker */}
+                          <div className="absolute left-5 top-0.5 -translate-x-1/2 flex items-center justify-center">
+                            <div className="w-10 h-10 rounded-full bg-white ring-4 ring-slate-50 flex items-center justify-center">
+                              <img
+                                src={getIconForTitle(notification.title)}
+                                alt=""
+                                className="w-6 h-6 object-contain"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Notification Card */}
+                          <div
+                            className={`p-4 rounded-lg border transition-all duration-200 ${
+                              notification.is_read
+                                ? 'bg-white border-slate-200'
+                                : 'bg-blue-50/70 border-blue-200 hover:border-blue-300 hover:bg-blue-50'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between">
+                              <h3 className={`text-base pr-2 ${notification.is_read ? 'font-medium text-slate-600' : 'font-bold text-slate-800'}`}>
+                                {notification.title}
+                              </h3>
+                              <p
+                                className="text-xs text-slate-400 flex-shrink-0"
+                                title={format(new Date(notification.created_at), "MMM d, yyyy - h:mm a")}
+                              >
+                                {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
+                              </p>
+                            </div>
+                            <p className={`mt-1 text-sm leading-relaxed ${notification.is_read ? 'text-slate-500' : 'text-slate-700'}`}>
+                              {notification.message}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </main>

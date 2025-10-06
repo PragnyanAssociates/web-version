@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Outlet, useLocation } from 'react-router-dom';
+import ScrollToTop from './screens/ScrollToTop.jsx'; // Add this import
 import HomeScreen from './screens/HomeScreen';
 import LoginScreen from './screens/LoginScreen';
 import WelcomePage from './screens/WelcomePage';
@@ -77,6 +78,7 @@ import DonorHelpDeskScreen from './components/helpdesk/DonorHelpDeskScreen.jsx';
 import UserHelpDeskScreen from './components/helpdesk/UserHelpDeskScreen.jsx';
 import AlumniScreen from './components/Alumni/AlumniScreen.jsx';
 import PreAdmissionsScreen from './components/Pre-Admissions/PreAdmissionsScreen.jsx';
+
 // --- Dashboard Layout Wrapper ---
 function DashboardLayout() {
   return (
@@ -106,6 +108,8 @@ function AppContent() {
 
   return (
     <div className="App min-h-screen bg-gray-50 relative">
+      <ScrollToTop /> {/* Add ScrollToTop component here */}
+      
       <Routes>
         {/* Public routes */}
         <Route path="/" element={<WelcomePage />} />

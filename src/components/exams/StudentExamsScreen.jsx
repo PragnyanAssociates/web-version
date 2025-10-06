@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from "react-router-dom";
 import { useAuth } from '../../context/AuthContext.tsx';
-// ★★★ 1. IMPORT apiClient AND REMOVE API_BASE_URL ★★★
 import apiClient from '../../api/client';
 import {
     MdPlayArrow,
@@ -60,6 +59,42 @@ function BellIcon() {
     );
 }
 
+function ProfileAvatar() {
+  const { getProfileImageUrl } = useAuth()
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  
+  const hasValidImage = getProfileImageUrl() && !imageError && imageLoaded
+  
+  return (
+    <div className="relative w-7 h-7 sm:w-9 sm:h-9">
+      {/* Always render the user placeholder */}
+      <div className={`absolute inset-0 rounded-full bg-gray-100 flex items-center justify-center border-2 border-slate-400 transition-opacity duration-200 ${hasValidImage ? 'opacity-0' : 'opacity-100'}`}>
+        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
+        </svg>
+      </div>
+      
+      {/* Profile image overlay */}
+      {getProfileImageUrl() && (
+        <img 
+          src={getProfileImageUrl()} 
+          alt="Profile" 
+          className={`absolute inset-0 w-full h-full rounded-full border border-slate-200 object-cover transition-opacity duration-200 ${hasValidImage ? 'opacity-100' : 'opacity-0'}`}
+          onError={() => {
+            setImageError(true)
+            setImageLoaded(false)
+          }}
+          onLoad={() => {
+            setImageError(false)
+            setImageLoaded(true)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
 // ✅ Custom Radio Button
 const CustomRadioButton = ({ label, value, selectedValue, onSelect }) => {
     const isSelected = value === selectedValue;
@@ -116,7 +151,6 @@ const StudentExamsScreen = () => {
         async function fetchUnreadNotifications() {
             if (!token) { setUnreadCount?.(0); return; }
             try {
-                // ★★★ 2. USE apiClient FOR NOTIFICATIONS ★★★
                 const response = await apiClient.get('/notifications');
                 const data = response.data;
                 const count = Array.isArray(data) ? data.filter((n) => !n.is_read).length : 0;
@@ -136,7 +170,6 @@ const StudentExamsScreen = () => {
             if (!user?.id) { setLoadingProfile(false); return; }
             setLoadingProfile(true);
             try {
-                // ★★★ 3. USE apiClient FOR PROFILE ★★★
                 const response = await apiClient.get(`/profiles/${user.id}`);
                 setProfile(response.data);
             } catch {
@@ -212,9 +245,9 @@ const StudentExamsScreen = () => {
     };
 
     return (
-        <div className="min-h-screen bg-slate-100">
-            <header className="border-b border-slate-200 bg-slate-100 sticky top-0 z-40">
-                <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-3">
+        <div className="min-h-screen bg-slate-50">
+                <header className="border-b border-slate-200 bg-slate-100">
+  <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-2">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
                         <div className="min-w-0 flex-1">
                             <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-slate-700 truncate">{pageInfo.title}</h1>
@@ -253,7 +286,7 @@ const StudentExamsScreen = () => {
                             <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
 
                             <div className="flex items-center gap-2 sm:gap-3">
-                                <img src={getProfileImageUrl() || "/placeholder.svg"} alt="Profile" className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover" onError={(e) => { e.currentTarget.src = "/assets/profile.png" }} />
+                              <ProfileAvatar />
                                 <div className="hidden sm:flex flex-col">
                                     <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">{profile?.full_name || profile?.username || "User"}</span>
                                     <span className="text-xs text-slate-600 capitalize">{profile?.role || ""}</span>
@@ -292,7 +325,7 @@ const StudentExamsScreen = () => {
     );
 };
 
-// ✅ REDESIGNED Exam List
+// ✅ Exam List (unchanged)
 const ExamList = ({ onStartExam, onViewResult }) => {
     const { user } = useAuth();
     const [exams, setExams] = useState([]);
@@ -302,11 +335,9 @@ const ExamList = ({ onStartExam, onViewResult }) => {
         if (!user?.id || !user.class_group) return;
         setIsLoading(true);
         try {
-            // ★★★ 4. USE apiClient FOR EXAMS - MATCHES MOBILE VERSION ★★★
             const response = await apiClient.get(`/exams/student/${user.id}/${user.class_group}`);
             setExams(response.data);
         } catch (error) {
-            // ★★★ 5. MATCH MOBILE ERROR HANDLING ★★★
             alert(error.response?.data?.message || 'Failed to fetch exams.');
         } finally {
             setIsLoading(false);
@@ -336,15 +367,6 @@ const ExamList = ({ onStartExam, onViewResult }) => {
             </span>
         );
     };
-
-    if (isLoading) {
-        return (
-            <div className="flex flex-col items-center justify-center py-12">
-                <div className="w-16 h-16 border-4 border-teal-200 border-t-teal-600 rounded-full animate-spin"></div>
-                <span className="mt-6 text-gray-600 text-lg">Loading your exams...</span>
-            </div>
-        );
-    }
     
     if (exams.length === 0) {
         return (
@@ -418,7 +440,7 @@ const ExamList = ({ onStartExam, onViewResult }) => {
     );
 };
 
-// ✅ REDESIGNED Take Exam View
+// ✅ UPDATED Take Exam View with Timer
 const TakeExamView = ({ exam, onFinish }) => {
     const { user } = useAuth();
     const [questions, setQuestions] = useState([]);
@@ -427,16 +449,21 @@ const TakeExamView = ({ exam, onFinish }) => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [attemptId, setAttemptId] = useState(null);
     const [currentQIndex, setCurrentQIndex] = useState(0);
+    // ★★★ NEW: Timer functionality ★★★
+    const [timeLeft, setTimeLeft] = useState(null);
 
     useEffect(() => {
         const startAndFetch = async () => {
             try {
-                // ★★★ 6. USE apiClient FOR EXAM START - MATCHES MOBILE VERSION ★★★
                 const startRes = await apiClient.post(`/exams/${exam.exam_id}/start`, { student_id: user.id });
                 const { attempt_id } = startRes.data;
                 setAttemptId(attempt_id);
 
-                // ★★★ 7. USE apiClient FOR QUESTIONS ★★★
+                // ★★★ NEW: Initialize timer based on exam details ★★★
+                if (exam.time_limit_mins > 0) {
+                    setTimeLeft(exam.time_limit_mins * 60);
+                }
+
                 const qRes = await apiClient.get(`/exams/take/${exam.exam_id}`);
                 const parsed = qRes.data.map(q => ({ 
                     ...q, 
@@ -444,7 +471,6 @@ const TakeExamView = ({ exam, onFinish }) => {
                 }));
                 setQuestions(parsed);
             } catch (error) {
-                // ★★★ 8. MATCH MOBILE ERROR HANDLING ★★★
                 alert(error.response?.data?.message || 'Could not start exam.');
                 onFinish();
             } finally {
@@ -454,8 +480,43 @@ const TakeExamView = ({ exam, onFinish }) => {
         startAndFetch();
     }, [exam, user.id, onFinish]);
 
+    // ★★★ NEW: Timer countdown and auto-submission ★★★
+    useEffect(() => {
+        if (timeLeft === null || isSubmitting) return;
+
+        if (timeLeft <= 0) {
+            performSubmit(true); // Auto-submit when time is up
+            return;
+        }
+
+        const intervalId = setInterval(() => {
+            setTimeLeft(prevTime => (prevTime ? prevTime - 1 : 0));
+        }, 1000);
+
+        return () => clearInterval(intervalId);
+    }, [timeLeft, isSubmitting]);
+
     const handleAnswerChange = (qId, value) => {
         setAnswers(prev => ({ ...prev, [qId]: value }));
+    };
+
+    // ★★★ NEW: Refactored submission logic for both manual and auto-submit ★★★
+    const performSubmit = async (isAutoSubmit = false) => {
+        if (isSubmitting || !user?.id) return;
+        
+        setIsSubmitting(true);
+        try {
+            await apiClient.post(`/attempts/${attemptId}/submit`, { answers, student_id: user.id });
+            alert(
+                isAutoSubmit
+                    ? "Time's up! Your exam has been automatically submitted."
+                    : 'Your exam has been submitted successfully!'
+            );
+            onFinish();
+        } catch (error) {
+            alert(error.response?.data?.message || error.message);
+            setIsSubmitting(false);
+        }
     };
 
     const handleSubmit = async () => {
@@ -465,19 +526,15 @@ const TakeExamView = ({ exam, onFinish }) => {
             : 'Are you sure you want to submit your exam?';
             
         if (!window.confirm(confirmMessage)) return;
+        performSubmit(false);
+    };
 
-        setIsSubmitting(true);
-        try {
-            // ★★★ 9. USE apiClient FOR SUBMISSION - MATCHES MOBILE VERSION ★★★
-            await apiClient.post(`/attempts/${attemptId}/submit`, { answers, student_id: user.id });
-            alert('Your exam has been submitted successfully!');
-            onFinish();
-        } catch (error) {
-            // ★★★ 10. MATCH MOBILE ERROR HANDLING ★★★
-            alert(error.response?.data?.message || error.message);
-        } finally {
-            setIsSubmitting(false);
-        }
+    // ★★★ NEW: Format time for display ★★★
+    const formatTime = (seconds) => {
+        if (seconds < 0) return '00:00';
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     };
 
     if (isLoading) {
@@ -492,102 +549,118 @@ const TakeExamView = ({ exam, onFinish }) => {
     const currentQuestion = questions[currentQIndex];
 
     return (
-        <div className="flex flex-col lg:flex-row gap-8">
-            {/* --- Question Palette (Left/Top) --- */}
-            <div className="w-full lg:w-1/4 lg:sticky top-24 self-start bg-slate-50 p-4 rounded-2xl shadow-lg border border-slate-200/80">
-                <h3 className="font-bold text-lg mb-4">Questions</h3>
-                <div className="grid grid-cols-5 md:grid-cols-8 lg:grid-cols-5 gap-2">
-                    {questions.map((q, index) => (
-                        <button
-                            key={q.question_id}
-                            onClick={() => setCurrentQIndex(index)}
-                            className={`h-10 w-10 rounded-lg font-bold text-sm transition-all duration-200 flex items-center justify-center
-                                ${index === currentQIndex ? 'bg-blue-600 text-white scale-110 ring-2 ring-blue-300' : ''}
-                                ${answers[q.question_id] ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-700'}
-                                ${index !== currentQIndex ? 'hover:bg-gray-300' : ''}
-                            `}
-                        >
-                            {index + 1}
-                        </button>
-                    ))}
-                </div>
-                 <button
-                    onClick={handleSubmit}
-                    disabled={isSubmitting}
-                    className="w-full mt-6 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                    {isSubmitting ? (
-                        <>
-                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                            Submitting...
-                        </>
-                    ) : (
-                        <>
-                           <MdArrowUpward /> Submit Exam
-                        </>
-                    )}
-                </button>
-            </div>
+        <div className="space-y-6">
+            {/* ★★★ NEW: Timer Display in Header ★★★ */}
+           {timeLeft !== null && (
+    <div className="mb-4 bg-red-50 border border-red-200 rounded-lg p-3">
+        <div className="flex items-center justify-center gap-2">
+            <MdTimer size={18} className="text-red-600" />
+            <span className="text-sm font-bold text-red-800">
+                {formatTime(timeLeft)}
+            </span>
+        </div>
+        <div className="text-xs text-red-600 text-center mt-1">Time Remaining</div>
+    </div>
+)}
 
-            {/* --- Main Question View (Right/Bottom) --- */}
-            <div className="w-full lg:w-3/4">
-                <div className="bg-slate-50 rounded-2xl shadow-xl border border-slate-200/80 p-8">
-                    <div className="border-b border-gray-200 pb-4 mb-6">
-                        <p className="text-sm text-gray-500">Question {currentQIndex + 1} of {questions.length}</p>
-                        <div className="flex items-start justify-between">
-                             <h2 className="text-2xl font-bold text-gray-800 mt-1">{currentQuestion.question_text}</h2>
-                             <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-semibold whitespace-nowrap">
-                                 {currentQuestion.marks} Marks
-                             </div>
+
+            <div className="flex flex-col lg:flex-row gap-8">
+                {/* --- Question Palette (Left/Top) --- */}
+                <div className="w-full lg:w-1/4 lg:sticky top-24 self-start bg-slate-50 p-4 rounded-2xl shadow-lg border border-slate-200/80">
+                    <h3 className="font-bold text-lg mb-4">Questions</h3>
+                    <div className="grid grid-cols-5 md:grid-cols-8 lg:grid-cols-5 gap-2">
+                        {questions.map((q, index) => (
+                            <button
+                                key={q.question_id}
+                                onClick={() => setCurrentQIndex(index)}
+                                className={`h-10 w-10 rounded-lg font-bold text-sm transition-all duration-200 flex items-center justify-center
+                                    ${index === currentQIndex ? 'bg-blue-600 text-white scale-110 ring-2 ring-blue-300' : ''}
+                                    ${answers[q.question_id] ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-700'}
+                                    ${index !== currentQIndex ? 'hover:bg-gray-300' : ''}
+                                `}
+                            >
+                                {index + 1}
+                            </button>
+                        ))}
+                    </div>
+                     <button
+                        onClick={handleSubmit}
+                        disabled={isSubmitting}
+                        className="w-full mt-6 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                        {isSubmitting ? (
+                            <>
+                                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                                Submitting...
+                            </>
+                        ) : (
+                            <>
+                               <MdArrowUpward /> Submit Exam
+                            </>
+                        )}
+                    </button>
+                </div>
+
+                {/* --- Main Question View (Right/Bottom) --- */}
+                <div className="w-full lg:w-3/4">
+                    <div className="bg-slate-50 rounded-2xl shadow-xl border border-slate-200/80 p-8">
+                        <div className="border-b border-gray-200 pb-4 mb-6">
+                            <p className="text-sm text-gray-500">Question {currentQIndex + 1} of {questions.length}</p>
+                            <div className="flex items-start justify-between">
+                                 <h2 className="text-2xl font-bold text-gray-800 mt-1">{currentQuestion.question_text}</h2>
+                                 <div className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-semibold whitespace-nowrap">
+                                     {currentQuestion.marks} Marks
+                                 </div>
+                            </div>
+                        </div>
+
+                        {/* Options / Answer Area */}
+                        <div className="space-y-4">
+                            {currentQuestion.question_type === 'multiple_choice' ? (
+                                Object.entries(currentQuestion.options).map(([key, val]) => (
+                                    <CustomRadioButton
+                                        key={key}
+                                        label={val}
+                                        value={key}
+                                        selectedValue={answers[currentQuestion.question_id]}
+                                        onSelect={(newVal) => handleAnswerChange(currentQuestion.question_id, newVal)}
+                                    />
+                                ))
+                            ) : (
+                                <textarea
+                                    className="w-full border-2 border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 focus:outline-none p-4 rounded-xl text-base bg-slate-50 transition-all duration-200 min-h-[150px]"
+                                    placeholder="Write your detailed answer here..."
+                                    value={answers[currentQuestion.question_id] || ''}
+                                    onChange={(e) => handleAnswerChange(currentQuestion.question_id, e.target.value)}
+                                />
+                            )}
                         </div>
                     </div>
 
-                    {/* Options / Answer Area */}
-                    <div className="space-y-4">
-                        {currentQuestion.question_type === 'multiple_choice' ? (
-                            Object.entries(currentQuestion.options).map(([key, val]) => (
-                                <CustomRadioButton
-                                    key={key}
-                                    label={val}
-                                    value={key}
-                                    selectedValue={answers[currentQuestion.question_id]}
-                                    onSelect={(newVal) => handleAnswerChange(currentQuestion.question_id, newVal)}
-                                />
-                            ))
-                        ) : (
-                            <textarea
-                                className="w-full border-2 border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 focus:outline-none p-4 rounded-xl text-base bg-slate-50 transition-all duration-200 min-h-[150px]"
-                                placeholder="Write your detailed answer here..."
-                                value={answers[currentQuestion.question_id] || ''}
-                                onChange={(e) => handleAnswerChange(currentQuestion.question_id, e.target.value)}
-                            />
-                        )}
+                    {/* Navigation */}
+                    <div className="flex justify-between mt-6">
+                        <button
+                            onClick={() => setCurrentQIndex(prev => Math.max(0, prev - 1))}
+                            disabled={currentQIndex === 0}
+                            className="bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-700 font-semibold py-2 px-6 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            <MdArrowBack /> Previous
+                        </button>
+                        <button
+                            onClick={() => setCurrentQIndex(prev => Math.min(questions.length - 1, prev + 1))}
+                            disabled={currentQIndex === questions.length - 1}
+                            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            Next <MdArrowForward />
+                        </button>
                     </div>
-                </div>
-
-                {/* Navigation */}
-                <div className="flex justify-between mt-6">
-                    <button
-                        onClick={() => setCurrentQIndex(prev => Math.max(0, prev - 1))}
-                        disabled={currentQIndex === 0}
-                        className="bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-700 font-semibold py-2 px-6 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                        <MdArrowBack /> Previous
-                    </button>
-                    <button
-                        onClick={() => setCurrentQIndex(prev => Math.min(questions.length - 1, prev + 1))}
-                        disabled={currentQIndex === questions.length - 1}
-                        className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                        Next <MdArrowForward />
-                    </button>
                 </div>
             </div>
         </div>
     );
 };
 
-// ✅ REDESIGNED Results View
+// ✅ Results View (unchanged)
 const ResultView = ({ attemptId, onBack }) => {
     const { user } = useAuth();
     const [result, setResult] = useState(null);
@@ -597,7 +670,6 @@ const ResultView = ({ attemptId, onBack }) => {
     useEffect(() => {
         const fetchResult = async () => {
             try {
-                // ★★★ 11. USE apiClient FOR RESULTS - MATCHES MOBILE VERSION ★★★
                 const response = await apiClient.get(`/attempts/${attemptId}/result?student_id=${user.id}`);
                 const data = response.data;
                 if (data.details) {
@@ -608,7 +680,6 @@ const ResultView = ({ attemptId, onBack }) => {
                 }
                 setResult(data);
             } catch (error) {
-                // ★★★ 12. MATCH MOBILE ERROR HANDLING ★★★
                 alert(error.response?.data?.message || 'Could not fetch results.');
                 onBack();
             } finally {

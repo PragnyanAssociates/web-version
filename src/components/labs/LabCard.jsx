@@ -6,7 +6,7 @@ const LabCard = ({ lab, onEdit, onDelete }) => {
   const canManage = onEdit && onDelete;
 
   // Open external link
-  const handleOpenLink = () => {
+  const handleOpenLink = async () => {
     if (!lab.access_url) return;
     try {
       window.open(lab.access_url, "_blank", "noopener,noreferrer");
@@ -16,7 +16,7 @@ const LabCard = ({ lab, onEdit, onDelete }) => {
   };
 
   // Open uploaded file
-  const handleOpenFile = () => {
+  const handleOpenFile = async () => {
     if (!lab.file_path) return;
     const fileUrl = `${API_BASE_URL}${lab.file_path}`;
     try {
@@ -171,7 +171,7 @@ const LabCard = ({ lab, onEdit, onDelete }) => {
             <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
             </svg>
-            Digital Lab Resource
+            For: {lab.class_group || 'All Classes'}
           </span>
           <span className="flex items-center">
             {(lab.file_path && lab.access_url) ? 'File + Link' : lab.file_path ? 'File Available' : lab.access_url ? 'Link Available' : 'No Resources'}

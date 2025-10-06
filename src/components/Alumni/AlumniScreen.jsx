@@ -48,6 +48,43 @@ function BellIcon() {
     </svg>
   );
 }
+function ProfileAvatar() {
+  const { getProfileImageUrl } = useAuth()
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  
+  const hasValidImage = getProfileImageUrl() && !imageError && imageLoaded
+  
+  return (
+    <div className="relative w-7 h-7 sm:w-9 sm:h-9">
+      {/* Always render the user placeholder */}
+      <div className={`absolute inset-0 rounded-full bg-gray-100 flex items-center justify-center border-2 border-slate-400 transition-opacity duration-200 ${hasValidImage ? 'opacity-0' : 'opacity-100'}`}>
+        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
+        </svg>
+      </div>
+      
+      {/* Profile image overlay */}
+      {getProfileImageUrl() && (
+        <img 
+          src={getProfileImageUrl()} 
+          alt="Profile" 
+          className={`absolute inset-0 w-full h-full rounded-full border border-slate-200 object-cover transition-opacity duration-200 ${hasValidImage ? 'opacity-100' : 'opacity-0'}`}
+          onError={() => {
+            setImageError(true)
+            setImageLoaded(false)
+          }}
+          onLoad={() => {
+            setImageError(false)
+            setImageLoaded(true)
+          }}
+        />
+      )}
+    </div>
+  )
+}   
+
+
 
 // --- HELPER FUNCTIONS ---
 const formatDate = (dateString) => {
@@ -279,7 +316,7 @@ const AlumniScreen = () => {
     const years = Object.keys(groupedAndFilteredAlumni);
 
     return (
-        <div className="space-y-6 pb-24">
+        <div className="space-y-6 pb-32"> {/* Increased bottom padding from pb-24 to pb-32 */}
           {years.length === 0 ? (
             <div className="text-center py-20 bg-slate-50 rounded-xl border border-slate-200">
               <FontAwesomeIcon icon={faUniversity} className="text-6xl text-slate-300 mb-4" />
@@ -306,98 +343,101 @@ const AlumniScreen = () => {
   };
   
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="border-b border-slate-200 bg-slate-100 sticky top-0 z-40">
-            <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-3">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-                    <div className="min-w-0 flex-1">
-                        <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-slate-700 truncate">Alumni Network</h1>
-                        <p className="text-xs sm:text-sm text-slate-600">A growing directory of our graduates</p>
-                    </div>
-
-                    <div className="flex items-center flex-wrap justify-end gap-2 sm:gap-3">
-                        <div className="inline-flex items-stretch rounded-lg border border-slate-200 bg-white overflow-hidden">
-                            <button onClick={() => navigate(getDefaultDashboardRoute())} className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition" type="button" title="Home">
-                                <HomeIcon />
-                                <span className="hidden md:inline">Home</span>
-                            </button>
-                            <div className="w-px bg-slate-200" aria-hidden="true" />
-                            <button onClick={() => navigate("/AcademicCalendar")} className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition" type="button" title="Calendar">
-                                <CalendarIcon />
-                                <span className="hidden md:inline">Calendar</span>
-                            </button>
-                            <div className="w-px bg-slate-200" aria-hidden="true" />
-                            <button onClick={() => navigate("/ProfileScreen")} className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition" type="button" title="Profile">
-                                <UserIcon />
-                                <span className="hidden md:inline">Profile</span>
-                            </button>
-                        </div>
-                        <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
-                        <div className="flex items-center gap-2 sm:gap-3">
-                            <img src={getProfileImageUrl() || "/placeholder.svg"} alt="Profile" className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover" onError={(e) => { e.currentTarget.src = "/assets/profile.png" }} />
-                            <div className="hidden sm:flex flex-col">
-                                <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">{profile?.full_name || profile?.username || "User"}</span>
-                                <span className="text-xs text-slate-600 capitalize">{profile?.role || ""}</span>
-                            </div>
-                            <button onClick={handleLogout} className="inline-flex items-center rounded-md bg-blue-600 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
-                                <span className="hidden sm:inline">Logout</span>
-                                <span className="sm:hidden">Exit</span>
-                            </button>
-                            <button onClick={() => navigate("/NotificationsScreen")} className="relative inline-flex items-center justify-center rounded-full border border-slate-200 bg-white p-1.5 sm:p-2 text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="Notifications" title="Notifications" type="button">
-                                <BellIcon />
-                                {unreadCount > 0 && (
-                                    <span className="absolute -top-0.5 sm:-top-1 -right-0.5 sm:-right-1 px-1 sm:px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-white bg-red-600 rounded-full min-w-[16px] sm:min-w-[18px]">
-                                        {unreadCount > 99 ? "99+" : unreadCount}
-                                    </span>
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                </div>
+    <div className="min-h-screen bg-slate-50">
+      <header className="border-b border-slate-200 bg-slate-100">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-2">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-slate-700 truncate">Alumni Network</h1>
+              <p className="text-xs sm:text-sm text-slate-600">A growing directory of our graduates</p>
             </div>
+
+            <div className="flex items-center flex-wrap justify-end gap-2 sm:gap-3">
+              <div className="inline-flex items-stretch rounded-lg border border-slate-200 bg-white overflow-hidden">
+                <button onClick={() => navigate(getDefaultDashboardRoute())} className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition" type="button" title="Home">
+                  <HomeIcon />
+                  <span className="hidden md:inline">Home</span>
+                </button>
+                <div className="w-px bg-slate-200" aria-hidden="true" />
+                <button onClick={() => navigate("/AcademicCalendar")} className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition" type="button" title="Calendar">
+                  <CalendarIcon />
+                  <span className="hidden md:inline">Calendar</span>
+                </button>
+                <div className="w-px bg-slate-200" aria-hidden="true" />
+                <button onClick={() => navigate("/ProfileScreen")} className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-xs sm:text-sm text-slate-700 hover:bg-slate-50 transition" type="button" title="Profile">
+                  <UserIcon />
+                  <span className="hidden md:inline">Profile</span>
+                </button>
+              </div>
+              <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
+              <div className="flex items-center gap-2 sm:gap-3">
+                   <ProfileAvatar />
+                <div className="hidden sm:flex flex-col">
+                  <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">{profile?.full_name || profile?.username || "User"}</span>
+                  <span className="text-xs text-slate-600 capitalize">{profile?.role || ""}</span>
+                </div>
+                <button onClick={handleLogout} className="inline-flex items-center rounded-md bg-blue-600 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                  <span className="hidden sm:inline">Logout</span>
+                  <span className="sm:hidden">Exit</span>
+                </button>
+                <button onClick={() => navigate("/NotificationsScreen")} className="relative inline-flex items-center justify-center rounded-full border border-slate-200 bg-white p-1.5 sm:p-2 text-slate-700 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label="Notifications" title="Notifications" type="button">
+                  <BellIcon />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-0.5 sm:-top-1 -right-0.5 sm:-right-1 px-1 sm:px-1.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-white bg-red-600 rounded-full min-w-[16px] sm:min-w-[18px]">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-6 sm:py-8">
-            <div className="mb-6">
-                <button
-                    onClick={() => navigate(getDefaultDashboardRoute())}
-                    className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors"
-                    title="Back to Dashboard"
-                >
-                    <MdArrowBack />
-                    <span>Back to Dashboard</span>
-                </button>
-            </div>
-            
-            <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row gap-4">
-                <div className="relative flex-grow">
-                    <FontAwesomeIcon icon={faSearch} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                        type="text"
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Search by name, admission no, status..."
-                        className="w-full rounded-md border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-800 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                </div>
-                <div className="flex items-center gap-3">
-                    <select className="w-full sm:w-auto rounded-md border border-slate-300 bg-white py-2 px-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option>Filter by Status</option>
-                    </select>
-                     <select className="w-full sm:w-auto rounded-md border border-slate-300 bg-white py-2 px-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option>Sort by Name</option>
-                    </select>
-                </div>
-            </div>
+      <main className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-6 sm:py-8 pb-20"> {/* Added pb-20 for bottom padding */}
+        <div className="mb-6">
+          <button
+            onClick={() => navigate(getDefaultDashboardRoute())}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors"
+            title="Back to Dashboard"
+          >
+            <MdArrowBack />
+            <span>Back to Dashboard</span>
+          </button>
+        </div>
+        
+        <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row gap-4">
+          <div className="relative flex-grow">
+            <FontAwesomeIcon icon={faSearch} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by name, admission no, status..."
+              className="w-full rounded-md border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-800 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <select className="w-full sm:w-auto rounded-md border border-slate-300 bg-white py-2 px-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option>Filter by Status</option>
+            </select>
+            <select className="w-full sm:w-auto rounded-md border border-slate-300 bg-white py-2 px-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option>Sort by Name</option>
+            </select>
+          </div>
+        </div>
 
-            {renderContent()}
+        {renderContent()}
       </main>
 
+      {/* Updated Floating Action Button with all fixes */}
       <button
         onClick={() => handleOpenModal()}
-        className="fixed right-6 bottom-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 rounded-full flex items-center justify-center shadow-lg transition-colors duration-200 z-40"
+        className="fixed right-4 sm:right-6 bottom-20 sm:bottom-24 w-12 h-12 sm:w-14 sm:h-14 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-full flex items-center justify-center shadow-xl hover:shadow-2xl transition-all duration-200 z-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+        aria-label="Add new alumni record"
+        title="Add New Alumni"
       >
-        <FontAwesomeIcon icon={faPlus} className="text-white text-xl" />
+        <FontAwesomeIcon icon={faPlus} className="text-white text-lg sm:text-xl" />
       </button>
 
       {modalVisible && (
@@ -481,7 +521,6 @@ const AlumniYearGroup = ({ year, alumniList, onEdit, onDelete, expandedCardId, o
         </div>
     );
 };
-
 
 // --- CARD & INFO ROW COMPONENTS ---
 const AlumniCardItem = ({ item, onEdit, onDelete, isExpanded, onPress }) => (

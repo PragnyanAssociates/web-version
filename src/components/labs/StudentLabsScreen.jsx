@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import apiClient from '../../api/client';
 import { SERVER_URL } from '../../apiConfig';
 import { useAuth } from "../../context/AuthContext.tsx";
-import { MdOutlineLaunch, MdCloudDownload, MdArrowBack } from "react-icons/md";
+import { MdOutlineLaunch, MdCloudDownload, MdArrowBack, MdRefresh } from "react-icons/md";
+
 
 // --- Icon Components for Header ---
 function UserIcon() {
@@ -16,6 +17,7 @@ function UserIcon() {
     );
 }
 
+
 function HomeIcon() {
     return (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
@@ -24,6 +26,7 @@ function HomeIcon() {
         </svg>
     );
 }
+
 
 function CalendarIcon() {
     return (
@@ -35,6 +38,7 @@ function CalendarIcon() {
         </svg>
     );
 }
+
 
 function BellIcon() {
     return (
@@ -48,6 +52,7 @@ function BellIcon() {
     );
 }
 
+
 function DigitalLabIcon() {
     return (
         <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
@@ -55,6 +60,7 @@ function DigitalLabIcon() {
         </svg>
     );
 }
+
 function ProfileAvatar() {
   const { getProfileImageUrl } = useAuth()
   const [imageError, setImageError] = useState(false)
@@ -92,17 +98,21 @@ function ProfileAvatar() {
 } 
 
 
+
 export default function StudentLabsScreen() {
     const navigate = useNavigate();
     const { user, token, logout, getProfileImageUrl, setUnreadCount } = useAuth();
+
 
     const [profile, setProfile] = useState(null);
     const [unreadCount, setLocalUnreadCount] = useState(0);
     const [headerQuery, setHeaderQuery] = useState("");
     const [labs, setLabs] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-    // ★★★ 2. ADD ERROR STATE TO MATCH MOBILE VERSION ★★★
+    // ✅ UPDATED: Add states to match mobile version
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [error, setError] = useState(null);
+
 
     useEffect(() => {
         async function fetchProfile() {
@@ -123,6 +133,7 @@ export default function StudentLabsScreen() {
         fetchProfile();
     }, [user]);
 
+
     useEffect(() => {
         async function fetchUnreadNotifications() {
             if (!token) { setUnreadCount?.(0); return; }
@@ -142,12 +153,14 @@ export default function StudentLabsScreen() {
         return () => clearInterval(id);
     }, [token, setUnreadCount]);
 
+
     const handleLogout = () => {
         if (window.confirm("Are you sure you want to log out?")) {
             logout();
             navigate("/");
         }
     };
+
 
     const getDefaultDashboardRoute = () => {
         if (!user) return '/';
@@ -157,21 +170,35 @@ export default function StudentLabsScreen() {
         return '/';
     };
 
+
+    // ✅ UPDATED: Match mobile version exactly
     const fetchLabs = useCallback(async () => {
-        setIsLoading(true);
+        if (!user || !user.class_group) {
+            setError('Could not determine your class. Please log in again.');
+            setIsLoading(false);
+            setIsRefreshing(false);
+            return;
+        }
         try {
-            // ★★★ 5. MATCH MOBILE VERSION ERROR HANDLING ★★★
             setError(null);
-            // ★★★ 6. USE apiClient FOR LABS - MATCHES MOBILE VERSION ★★★
-            const response = await apiClient.get('/labs');
+            // ✅ UPDATED: Use class-specific endpoint like mobile version
+            const response = await apiClient.get(`/labs/student/${user.class_group}`);
             setLabs(response.data);
         } catch (e) {
-            // ★★★ 7. MATCH MOBILE ERROR HANDLING PATTERN ★★★
+            // ✅ UPDATED: Match mobile error handling pattern exactly
             setError(e.response?.data?.message || 'Failed to fetch Digital Labs.');
         } finally {
             setIsLoading(false);
+            setIsRefreshing(false);
         }
-    }, []);
+    }, [user]);
+
+    // ✅ NEW: Add refresh function like mobile version
+    const onRefresh = () => {
+        setIsRefreshing(true);
+        fetchLabs();
+    };
+
 
     useEffect(() => {
         fetchLabs();
@@ -182,6 +209,7 @@ export default function StudentLabsScreen() {
         (lab.subject && lab.subject.toLowerCase().includes(headerQuery.toLowerCase())) ||
         lab.description.toLowerCase().includes(headerQuery.toLowerCase())
     );
+
 
     if (isLoading) {
         return (
@@ -197,35 +225,39 @@ export default function StudentLabsScreen() {
         );
     }
 
-    // ★★★ 8. ADD ERROR STATE HANDLING TO MATCH MOBILE VERSION ★★★
+
+    // ✅ UPDATED: Enhanced error state handling to match mobile version
     if (error) {
         return (
             <div className="bg-slate-100 min-h-screen relative flex items-center justify-center">
-                <div className="flex flex-col items-center justify-center">
+                <div className="flex flex-col items-center justify-center max-w-md mx-auto p-6">
                     <div className="w-16 h-16 bg-gradient-to-r from-red-100 to-red-200 rounded-full flex items-center justify-center mx-auto mb-5">
                         <DigitalLabIcon />
                     </div>
-                    <h3 className="text-xl font-bold text-red-700 mb-3">Error Loading Labs</h3>
+                    <h3 className="text-xl font-bold text-red-700 mb-3 text-center">Error Loading Labs</h3>
                     <p className="text-red-600 mb-6 text-base text-center">{error}</p>
                     <button 
                         onClick={fetchLabs}
                         className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-lg transition-all"
+                        disabled={isRefreshing}
                     >
-                        Try Again
+                        <MdRefresh className={isRefreshing ? 'animate-spin' : ''} />
+                        <span>{isRefreshing ? 'Retrying...' : 'Try Again'}</span>
                     </button>
                 </div>
             </div>
         );
     }
 
+
     return (
-        <div className="min-h-screen bg-slate-100">
-            <header className="border-b border-slate-200 bg-slate-100 sticky top-0 z-40">
-                <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-3">
+        <div className="min-h-screen bg-slate-50">
+               <header className="border-b border-slate-200 bg-slate-100">
+  <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-2">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
                         <div className="min-w-0 flex-1">
-                            <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-slate-700 truncate">Digital Labs</h1>
-                            <p className="text-xs sm:text-sm text-slate-600">Explore learning resources and simulations</p>
+                            <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-slate-700 truncate">Digital Labs & Simulations</h1>
+                            <p className="text-xs sm:text-sm text-slate-600">Access interactive learning tools and virtual experiments.</p>
                         </div>
                         <div className="flex items-center flex-wrap justify-end gap-2 sm:gap-3">
                             <div className="relative">
@@ -269,11 +301,23 @@ export default function StudentLabsScreen() {
                 </div>
             </header>
 
+
             <main className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-6 sm:py-8">
-                <div className="mb-6">
+                <div className="mb-6 flex items-center justify-between">
                     <button onClick={() => navigate(getDefaultDashboardRoute())} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors">
                         <MdArrowBack />
                         <span>Back to Dashboard</span>
+                    </button>
+                    
+                    {/* ✅ NEW: Add refresh button like mobile RefreshControl */}
+                    <button 
+                        onClick={onRefresh}
+                        disabled={isRefreshing}
+                        className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors disabled:opacity-50"
+                        title="Refresh labs"
+                    >
+                        <MdRefresh className={isRefreshing ? 'animate-spin' : ''} />
+                        <span className="hidden sm:inline">Refresh</span>
                     </button>
                 </div>
                 
@@ -282,59 +326,75 @@ export default function StudentLabsScreen() {
                         <div className="w-16 h-16 bg-gradient-to-r from-gray-100 to-gray-200 rounded-full flex items-center justify-center mx-auto mb-5">
                             <DigitalLabIcon />
                         </div>
-                        <h3 className="text-xl font-bold text-gray-700 mb-3">No Labs Available</h3>
-                        <p className="text-gray-600 mb-6 text-base">There are currently no labs matching your search. Please check back later.</p>
+                        <h3 className="text-xl font-bold text-gray-700 mb-3">No digital labs are available at the moment.</h3>
+                        <p className="text-gray-600 mb-6 text-base">Check back later or contact your teacher if you think this is an error.</p>
+                        {/* ✅ UPDATED: Show class info if available */}
+                        {user?.class_group && (
+                            <p className="text-sm text-blue-600 mb-4">📚 Your class: {user.class_group}</p>
+                        )}
                     </div>
                 ) : (
-                    <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {filteredLabs.map((lab, index) => (
-                            <li key={lab.id} className="bg-slate-50 rounded-lg shadow-sm border border-slate-200 p-4 transition-shadow hover:shadow-md flex flex-col h-full" style={{ animation: `fadeInUp 0.6s ease-out ${index * 0.1}s both` }}>
-                                {/* ★★★ 9. USE SERVER_URL FOR IMAGES - MATCHES MOBILE PATTERN ★★★ */}
-                                <img src={lab.cover_image_url ? `${SERVER_URL}${lab.cover_image_url}` : "/assets/lab-placeholder.png"} alt={lab.title} className="w-full h-40 rounded-md object-cover flex-shrink-0 bg-slate-200 mb-4" onError={(e) => { e.currentTarget.src = "/assets/lab-placeholder.png"; }} />
-                                <div className="flex flex-col flex-grow">
-                                    <div className="flex-grow">
-                                        <span className="inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded-full mb-2">{lab.lab_type || "General"}</span>
-                                        <h3 className="text-lg font-bold text-slate-800">{lab.title}</h3>
-                                        {lab.subject && <p className="text-sm font-medium text-slate-500 mb-2">{lab.subject}</p>}
-                                        <p className="text-sm text-slate-600 line-clamp-3">{lab.description}</p>
+                    <>
+                        {/* ✅ NEW: Show class information */}
+                        {user?.class_group && (
+                            <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                <p className="text-sm text-blue-800">
+                                    📚 Showing labs for <strong>{user.class_group}</strong> 
+                                    {filteredLabs.length !== labs.length && ` (${filteredLabs.length} of ${labs.length} labs match your search)`}
+                                </p>
+                            </div>
+                        )}
+
+                        <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {filteredLabs.map((lab, index) => (
+                                <li key={lab.id} className="bg-slate-50 rounded-lg shadow-sm border border-slate-200 p-4 transition-shadow hover:shadow-md flex flex-col h-full" style={{ animation: `fadeInUp 0.6s ease-out ${index * 0.1}s both` }}>
+                                    {/* ★★★ 9. USE SERVER_URL FOR IMAGES - MATCHES MOBILE PATTERN ★★★ */}
+                                    <img src={lab.cover_image_url ? `${SERVER_URL}${lab.cover_image_url}` : "/assets/lab-placeholder.png"} alt={lab.title} className="w-full h-40 rounded-md object-cover flex-shrink-0 bg-slate-200 mb-4" onError={(e) => { e.currentTarget.src = "/assets/lab-placeholder.png"; }} />
+                                    <div className="flex flex-col flex-grow">
+                                        <div className="flex-grow">
+                                            <span className="inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded-full mb-2">{lab.lab_type || "General"}</span>
+                                            <h3 className="text-lg font-bold text-slate-800">{lab.title}</h3>
+                                            {lab.subject && <p className="text-sm font-medium text-slate-500 mb-2">{lab.subject}</p>}
+                                            <p className="text-sm text-slate-600 line-clamp-3">{lab.description}</p>
+                                        </div>
+                                        
+                                        <div className="flex items-center justify-end pt-4 gap-2">
+                                            {lab.access_url && (
+                                                <a 
+                                                    href={lab.access_url} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-lg transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-sm"
+                                                >
+                                                    <MdOutlineLaunch />
+                                                    <span>Open Link</span>
+                                                </a>
+                                            )}
+                                            {lab.file_path && (
+                                                <a 
+                                                    /* ★★★ 10. USE SERVER_URL FOR FILE DOWNLOADS - MATCHES MOBILE PATTERN ★★★ */
+                                                    href={`${SERVER_URL}${lab.file_path}`} 
+                                                    download
+                                                    className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-lg transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-sm"
+                                                >
+                                                    <MdCloudDownload />
+                                                    <span>Download</span>
+                                                </a>
+                                            )}
+                                            {!lab.access_url && !lab.file_path && (
+                                                <button
+                                                    disabled
+                                                    className="inline-flex items-center gap-2 bg-gray-400 text-white font-semibold px-4 py-2 rounded-lg cursor-not-allowed text-sm"
+                                                >
+                                                    <span>Not Available</span>
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
-                                    
-                                    <div className="flex items-center justify-end pt-4 gap-2">
-                                        {lab.access_url && (
-                                            <a 
-                                                href={lab.access_url} 
-                                                target="_blank" 
-                                                rel="noopener noreferrer"
-                                                className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-lg transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-sm"
-                                            >
-                                                <MdOutlineLaunch />
-                                                <span>Open Link</span>
-                                            </a>
-                                        )}
-                                        {lab.file_path && (
-                                            <a 
-                                                /* ★★★ 10. USE SERVER_URL FOR FILE DOWNLOADS - MATCHES MOBILE PATTERN ★★★ */
-                                                href={`${SERVER_URL}${lab.file_path}`} 
-                                                download
-                                                className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-lg transition-all shadow-md hover:shadow-lg transform hover:scale-105 text-sm"
-                                            >
-                                                <MdCloudDownload />
-                                                <span>Download</span>
-                                            </a>
-                                        )}
-                                        {!lab.access_url && !lab.file_path && (
-                                            <button
-                                                disabled
-                                                className="inline-flex items-center gap-2 bg-gray-400 text-white font-semibold px-4 py-2 rounded-lg cursor-not-allowed text-sm"
-                                            >
-                                                <span>Not Available</span>
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            </li>
-                        ))}
-                    </ul>
+                                </li>
+                            ))}
+                        </ul>
+                    </>
                 )}
             </main>
         </div>

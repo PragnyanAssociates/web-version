@@ -5,6 +5,7 @@ import apiClient from "../../api/client"; // ← Use apiClient like mobile versi
 import { useAuth } from "../../context/AuthContext.tsx";
 import { MdPhotoLibrary, MdCloudUpload, MdEvent, MdTitle, MdClose, MdDelete, MdAdd, MdEdit } from "react-icons/md";
 
+
 // --- Icon Components for Header (Unchanged) ---
 function UserIcon() {
     return (
@@ -15,6 +16,7 @@ function UserIcon() {
     );
 }
 
+
 function HomeIcon() {
     return (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
@@ -23,6 +25,7 @@ function HomeIcon() {
         </svg>
     );
 }
+
 
 function CalendarIcon() {
     return (
@@ -34,6 +37,7 @@ function CalendarIcon() {
         </svg>
     );
 }
+
 
 function BellIcon() {
     return (
@@ -47,6 +51,43 @@ function BellIcon() {
     );
 }
 
+function ProfileAvatar() {
+  const { getProfileImageUrl } = useAuth()
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  
+  const hasValidImage = getProfileImageUrl() && !imageError && imageLoaded
+  
+  return (
+    <div className="relative w-7 h-7 sm:w-9 sm:h-9">
+      {/* Always render the user placeholder */}
+      <div className={`absolute inset-0 rounded-full bg-gray-100 flex items-center justify-center border-2 border-slate-400 transition-opacity duration-200 ${hasValidImage ? 'opacity-0' : 'opacity-100'}`}>
+        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
+        </svg>
+      </div>
+      
+      {/* Profile image overlay */}
+      {getProfileImageUrl() && (
+        <img 
+          src={getProfileImageUrl()} 
+          alt="Profile" 
+          className={`absolute inset-0 w-full h-full rounded-full border border-slate-200 object-cover transition-opacity duration-200 ${hasValidImage ? 'opacity-100' : 'opacity-0'}`}
+          onError={() => {
+            setImageError(true)
+            setImageLoaded(false)
+          }}
+          onLoad={() => {
+            setImageError(false)
+            setImageLoaded(true)
+          }}
+        />
+      )}
+    </div>
+  )
+}   
+
+
 function DigitalLabIcon() {
     return (
         <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
@@ -55,20 +96,24 @@ function DigitalLabIcon() {
     );
 }
 
+
 export default function TeacherAdminLabsScreen() {
     const navigate = useNavigate();
     const { user, token, logout, getProfileImageUrl, setUnreadCount } = useAuth();
+
 
     // --- State for Header ---
     const [profile, setProfile] = useState(null);
     const [unreadCount, setLocalUnreadCount] = useState(0);
     const [headerQuery, setHeaderQuery] = useState("");
 
+
     // --- State for Labs Page ---
     const [labs, setLabs] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [viewMode, setViewMode] = useState('list');
     const [editingLab, setEditingLab] = useState(null);
+
 
     const initialFormState = {
         title: "",
@@ -80,6 +125,11 @@ export default function TeacherAdminLabsScreen() {
     const [formData, setFormData] = useState(initialFormState);
     const [selectedImage, setSelectedImage] = useState(null);
     const [selectedFile, setSelectedFile] = useState(null);
+
+    // ✅ NEW: Added class assignment feature
+    const [studentClasses, setStudentClasses] = useState([]);
+    const [selectedClass, setSelectedClass] = useState('');
+
 
     // --- Header Profile Fetch (FIXED) ---
     useEffect(() => {
@@ -100,6 +150,7 @@ export default function TeacherAdminLabsScreen() {
         fetchProfile();
     }, [user]);
 
+
     // --- Header Notifications Fetch (FIXED) ---
     useEffect(() => {
         async function fetchUnreadNotifications() {
@@ -118,12 +169,14 @@ export default function TeacherAdminLabsScreen() {
         return () => clearInterval(id);
     }, [token, setUnreadCount]);
 
+
     const handleLogout = () => {
         if (window.confirm("Are you sure you want to log out?")) {
             logout();
             navigate("/");
         }
     };
+
 
     const getDefaultDashboardRoute = () => {
         if (!user) return '/';
@@ -133,22 +186,37 @@ export default function TeacherAdminLabsScreen() {
         return '/';
     };
 
-    // --- Labs Fetch (FIXED) ---
+
+    // --- Labs Fetch (UPDATED to use teacher-specific endpoint) ---
     const fetchLabs = useCallback(async () => {
+        if (!user) return;
         setIsLoading(true);
         try {
-            const response = await apiClient.get('/labs'); // ✅ Fixed: Use apiClient, remove /api prefix
+            const response = await apiClient.get(`/labs/teacher/${user.id}`); // ✅ UPDATED: Match mobile version
             setLabs(response.data);
         } catch (e) {
             alert(e.response?.data?.message || 'Failed to fetch labs'); // ✅ Fixed: Consistent error handling
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [user]);
+
+    // ✅ NEW: Fetch student classes function
+    const fetchStudentClasses = async () => {
+        try {
+            const response = await apiClient.get('/student-classes');
+            setStudentClasses(response.data);
+        } catch (e) {
+            console.error("Error fetching student classes:", e);
+        }
+    };
+
 
     useEffect(() => {
         fetchLabs();
+        fetchStudentClasses(); // ✅ NEW: Fetch classes on component mount
     }, [fetchLabs]);
+
 
     const handleChoosePhoto = (e) => {
         if (e.target.files && e.target.files[0]) {
@@ -156,11 +224,13 @@ export default function TeacherAdminLabsScreen() {
         }
     };
 
+
     const handleChooseFile = (e) => {
         if (e.target.files && e.target.files[0]) {
             setSelectedFile(e.target.files[0]);
         }
     };
+
 
     const handleShowForm = (lab = null) => {
         setEditingLab(lab);
@@ -172,13 +242,16 @@ export default function TeacherAdminLabsScreen() {
                 description: lab.description,
                 access_url: lab.access_url || ""
             });
+            setSelectedClass(lab.class_group || ''); // ✅ NEW: Set selected class for editing
         } else {
             setFormData(initialFormState);
+            setSelectedClass(''); // ✅ NEW: Reset selected class for new lab
         }
         setSelectedImage(null);
         setSelectedFile(null);
         setViewMode('form');
     };
+
 
     const handleReturnToList = () => {
         setEditingLab(null);
@@ -186,7 +259,8 @@ export default function TeacherAdminLabsScreen() {
         setViewMode('list');
     };
 
-    // --- Save Lab (FIXED) ---
+
+    // --- Save Lab (UPDATED with class assignment) ---
     const handleSave = async () => {
         if (!formData.title || !formData.description) {
             return alert("Title and Description are required.");
@@ -195,12 +269,17 @@ export default function TeacherAdminLabsScreen() {
             return alert("You must provide an Access URL or upload a file.");
         }
 
+
         const data = new FormData();
         Object.keys(formData).forEach((key) => data.append(key, formData[key]));
         if (user) data.append("created_by", user.id);
 
+        // ✅ NEW: Add class assignment
+        data.append('class_group', selectedClass);
+
         if (selectedImage) data.append("coverImage", selectedImage);
         if (selectedFile) data.append("labFile", selectedFile);
+
 
         try {
             // ✅ Fixed: Use apiClient with same syntax as mobile version
@@ -221,6 +300,7 @@ export default function TeacherAdminLabsScreen() {
         }
     };
 
+
     // --- Delete Lab (FIXED) ---
     const handleDelete = async (id) => {
         if (!window.confirm("Are you sure you want to delete this lab?")) return;
@@ -232,6 +312,7 @@ export default function TeacherAdminLabsScreen() {
             alert(e.response?.data?.message || "Failed to delete lab."); // ✅ Fixed: Consistent error handling
         }
     };
+
 
     if (isLoading) {
         return (
@@ -247,10 +328,11 @@ export default function TeacherAdminLabsScreen() {
         );
     }
 
+
     return (
-        <div className="min-h-screen bg-slate-100">
-            <header className="border-b border-slate-200 bg-slate-100 sticky top-0 z-40">
-                <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-3">
+        <div className="min-h-screen bg-slate-50">
+              <header className="border-b border-slate-200 bg-slate-100">
+  <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-2">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
                         <div className="min-w-0 flex-1">
                             <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-slate-700 truncate">Digital Labs</h1>
@@ -278,7 +360,7 @@ export default function TeacherAdminLabsScreen() {
                             </div>
                             <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
                             <div className="flex items-center gap-2 sm:gap-3">
-                                <img src={getProfileImageUrl() || "/placeholder.svg"} alt="Profile" className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover" onError={(e) => { e.currentTarget.src = "/assets/profile.png" }} />
+                                   <ProfileAvatar />
                                 <div className="hidden sm:flex flex-col">
                                     <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">{profile?.full_name || profile?.username || "User"}</span>
                                     <span className="text-xs text-slate-600 capitalize">{profile?.role || ""}</span>
@@ -306,12 +388,14 @@ export default function TeacherAdminLabsScreen() {
                             </button>
                         </div>
 
+
                         <div className="mb-8 flex justify-end">
                             <button className="inline-flex items-center justify-center bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-5 py-2.5 rounded-lg font-semibold shadow-lg transition-all duration-300 hover:shadow-xl transform hover:scale-[1.02] text-sm" onClick={() => handleShowForm(null)}>
                                 <MdAdd className="mr-2" size={20} />
                                 <span>Add New Lab</span>
                             </button>
                         </div>
+
 
                         {labs.length === 0 ? (
                             <div className="bg-slate-50 rounded-2xl shadow-xl border border-slate-200 p-8 sm:p-10 text-center">
@@ -337,6 +421,8 @@ export default function TeacherAdminLabsScreen() {
                                                 <span className="inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded-full mb-2">{lab.lab_type || "General"}</span>
                                                 <h3 className="text-lg font-bold text-slate-800">{lab.title}</h3>
                                                 {lab.subject && <p className="text-sm font-medium text-slate-500 mb-2">{lab.subject}</p>}
+                                                {/* ✅ NEW: Display assigned class */}
+                                                {lab.class_group && <p className="text-xs text-blue-600 mb-2">📚 Class: {lab.class_group}</p>}
                                                 <p className="text-sm text-slate-600 line-clamp-3">{lab.description}</p>
                                             </div>
                                             <div className="flex items-center gap-2 self-end pt-4">
@@ -354,7 +440,7 @@ export default function TeacherAdminLabsScreen() {
                         )}
                     </>
                 ) : (
-                    // --- Form View (Unchanged) ---
+                    // --- Form View (UPDATED with class assignment) ---
                     <div className="bg-slate-50 rounded-xl shadow-lg border border-slate-200 p-4 sm:p-8">
                         <div className="max-w-4xl mx-auto">
                             <div className="text-center mb-6 sm:mb-8">
@@ -367,6 +453,22 @@ export default function TeacherAdminLabsScreen() {
                             </div>
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
                                 <div className="space-y-5">
+                                    {/* ✅ NEW: Class Assignment Dropdown */}
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-2">Assign to Class</label>
+                                        <select 
+                                            className="w-full border-2 border-gray-200 rounded-lg p-3 focus:outline-none focus:border-blue-500 focus:ring-3 focus:ring-blue-500/20 transition-all duration-300 bg-white text-sm"
+                                            value={selectedClass}
+                                            onChange={(e) => setSelectedClass(e.target.value)}
+                                        >
+                                            <option value="">-- Assign to a Class (Optional) --</option>
+                                            <option value="">All Classes</option>
+                                            {studentClasses.map(className => (
+                                                <option key={className} value={className}>{className}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-2">Lab Title *</label>
                                         <input className="w-full border-2 border-gray-200 rounded-lg p-3 focus:outline-none focus:border-blue-500 focus:ring-3 focus:ring-blue-500/20 transition-all duration-300 bg-white text-sm" placeholder="Enter lab title" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} autoFocus />

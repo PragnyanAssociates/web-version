@@ -55,6 +55,42 @@ function BellIcon() {
   );
 }
 
+function ProfileAvatar() {
+  const { getProfileImageUrl } = useAuth()
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  
+  const hasValidImage = getProfileImageUrl() && !imageError && imageLoaded
+  
+  return (
+    <div className="relative w-7 h-7 sm:w-9 sm:h-9">
+      {/* Always render the user placeholder */}
+      <div className={`absolute inset-0 rounded-full bg-gray-100 flex items-center justify-center border-2 border-slate-400 transition-opacity duration-200 ${hasValidImage ? 'opacity-0' : 'opacity-100'}`}>
+        <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+          <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
+        </svg>
+      </div>
+      
+      {/* Profile image overlay */}
+      {getProfileImageUrl() && (
+        <img 
+          src={getProfileImageUrl()} 
+          alt="Profile" 
+          className={`absolute inset-0 w-full h-full rounded-full border border-slate-200 object-cover transition-opacity duration-200 ${hasValidImage ? 'opacity-100' : 'opacity-0'}`}
+          onError={() => {
+            setImageError(true)
+            setImageLoaded(false)
+          }}
+          onLoad={() => {
+            setImageError(false)
+            setImageLoaded(true)
+          }}
+        />
+      )}
+    </div>
+  )
+}   
+
 const TeacherAdminExamsScreen = () => {
   const { user, token, logout, getProfileImageUrl, setUnreadCount } = useAuth();
   const navigate = useNavigate();
@@ -69,8 +105,6 @@ const TeacherAdminExamsScreen = () => {
   const [view, setView] = useState("list");
   const [selectedExam, setSelectedExam] = useState(null);
   const [selectedSubmission, setSelectedSubmission] = useState(null);
-  // ★★★ FIX: Remove global isLoading state that was causing conflicts ★★★
-  // const [isLoading, setIsLoading] = useState(false);
 
   // --- Hooks for Header Functionality ---
   useEffect(() => {
@@ -196,14 +230,13 @@ const TeacherAdminExamsScreen = () => {
   const renderContent = () => {
     switch (view) {
       case 'list':
-        // ★★★ FIX: Remove setIsLoading prop causing conflicts ★★★
         return <ExamList onCreateNew={handleCreateNew} onEdit={handleEdit} onViewSubmissions={handleViewSubmissions} />;
       case 'create':
         return <CreateOrEditExamView examToEdit={selectedExam} onFinish={backToList} />;
       case 'submissions':
         return <SubmissionsView exam={selectedExam} onGrade={handleGrade} />;
       case 'grading':
-        return <GradingView submission={selectedSubmission} onFinish={backToSubmissions} />;
+        return <GradingView submission={selectedSubmission} exam={selectedExam} onFinish={backToSubmissions} />;
       default:
         return null;
     }
@@ -236,8 +269,8 @@ const TeacherAdminExamsScreen = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-slate-100 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-3">
+          <header className="border-b border-slate-200 bg-slate-100">
+  <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8 py-2">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
             <div className="min-w-0 flex-1">
               <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold text-slate-700 truncate">{title}</h1>
@@ -287,14 +320,7 @@ const TeacherAdminExamsScreen = () => {
                </div>
                <div className="h-4 sm:h-6 w-px bg-slate-200 mx-0.5 sm:mx-1" aria-hidden="true" />
                <div className="flex items-center gap-2 sm:gap-3">
-                 <img
-                   src={getProfileImageUrl() || "/placeholder.svg"}
-                   alt="Profile"
-                   className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-slate-200 object-cover"
-                   onError={(e) => {
-                     e.currentTarget.src = "/assets/profile.png"
-                   }}
-                 />
+                   <ProfileAvatar />
                  <div className="hidden sm:flex flex-col">
                    <span className="text-xs sm:text-sm font-medium text-slate-900 truncate max-w-[8ch] sm:max-w-[12ch]">
                      {profile?.full_name || profile?.username || "User"}
@@ -329,7 +355,6 @@ const TeacherAdminExamsScreen = () => {
       </header>
       <main className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8 py-6 sm:py-8">
         {getBackButton()}
-        {/* ★★★ FIX: Only show loading for profile, not for content ★★★ */}
         {loadingProfile ? (
           <div className="flex justify-center items-center py-20">
             <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
@@ -342,12 +367,10 @@ const TeacherAdminExamsScreen = () => {
   );
 };
 
-// ★★★ FIX: Remove setIsLoading prop and manage loading internally ★★★
 const ExamList = ({ onCreateNew, onEdit, onViewSubmissions }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [exams, setExams] = useState([]);
-  // ★★★ FIX: Use local loading state ★★★
   const [isLoading, setIsLoading] = useState(true);
 
   const getDefaultDashboardRoute = () => {
@@ -391,7 +414,6 @@ const ExamList = ({ onCreateNew, onEdit, onViewSubmissions }) => {
     }
   };
 
-  // ★★★ FIX: Show loading inside the component ★★★
   if (isLoading) {
     return (
       <div className="flex justify-center items-center py-20">
@@ -675,7 +697,8 @@ const SubmissionsView = ({ exam, onGrade }) => {
   return <div className="bg-white rounded-xl shadow-sm border border-slate-200"><div className="p-4 sm:p-6 border-b border-slate-200"><h2 className="text-lg font-bold text-slate-800">Student Submissions</h2></div><div className="overflow-x-auto"><table className="w-full table-auto"><thead><tr className="bg-slate-100 border-b border-slate-200"><th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Student Name</th><th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Status</th><th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Score</th><th className="px-6 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Actions</th></tr></thead><tbody className="divide-y divide-slate-200">{submissions.length === 0 ? (<tr><td colSpan="4" className="p-16 text-center"><div className="w-16 h-16 mx-auto bg-slate-100 rounded-full flex items-center justify-center mb-4"><svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg></div><h3 className="text-lg font-semibold text-slate-700 mb-1">No submissions yet</h3><p className="text-slate-500">When students submit this exam, their entries will appear here.</p></td></tr>) : (submissions.map((item) => (<tr key={item.attempt_id} className="hover:bg-slate-100 transition-colors"><td className="px-6 py-4 whitespace-nowrap"><div className="font-medium text-slate-800">{item.student_name}</div></td><td className="px-6 py-4 whitespace-nowrap"><span className={`px-3 py-1 rounded-full text-xs font-semibold ${item.status === "graded" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}`}>{item.status}</span></td><td className="px-6 py-4 whitespace-nowrap"><span className="font-medium text-slate-700">{item.status === 'graded' ? `${item.final_score} / ${exam.total_marks}`: 'N/A'}</span></td><td className="px-6 py-4 whitespace-nowrap"><button onClick={() => onGrade(item)} className="flex items-center gap-1.5 text-white bg-yellow-500 hover:bg-yellow-600 rounded-md px-3 py-2 text-xs font-semibold transition"><MdEdit size={16} />{item.status === "graded" ? "Update Grade" : "Grade Now"}</button></td></tr>)))}</tbody></table></div></div>;
 };
 
-const GradingView = ({ submission, onFinish }) => {
+// ★★★ UPDATED: Added options parsing and correct answer display ★★★
+const GradingView = ({ submission, exam, onFinish }) => {
   const { user } = useAuth();
   const [submissionDetails, setSubmissionDetails] = useState([]);
   const [gradedAnswers, setGradedAnswers] = useState({});
@@ -687,7 +710,16 @@ const GradingView = ({ submission, onFinish }) => {
       setIsLoading(true);
       try {
         const response = await apiClient.get(`/submissions/${submission.attempt_id}`);
-        const details = response.data;
+        let details = response.data;
+
+        // ★★★ MODIFICATION: Parse options if they are strings, just like in the RN version ★★★
+        if (details) {
+          details = details.map(item => ({
+            ...item,
+            options: (item.options && typeof item.options === 'string') ? JSON.parse(item.options) : item.options,
+          }));
+        }
+
         setSubmissionDetails(details);
         const initialGrades = details.reduce((acc, item) => ({ ...acc, [item.question_id]: item.marks_awarded || "" }), {});
         setGradedAnswers(initialGrades);
@@ -735,30 +767,49 @@ const GradingView = ({ submission, onFinish }) => {
       <div className="bg-white p-6 rounded-xl border shadow-sm">
         <h2 className="text-xl font-bold text-slate-800">Review & Grade</h2>
       </div>
-      {submissionDetails.map((item, index) => (
-        <div key={item.question_id} className="bg-white rounded-xl shadow-sm border border-slate-200">
-          <div className="p-6 border-b border-slate-200">
-            <p className="font-semibold text-slate-500">Question {index + 1} <span className="font-normal text-slate-400">(Max {item.marks} Marks)</span></p>
-            <p className="text-lg text-slate-800 mt-1">{item.question_text}</p>
-          </div>
-          <div className="p-6 bg-slate-100">
-            <div className="mb-4">
-              <p className="font-semibold text-slate-700 mb-2">Student's Answer:</p>
-              <p className="text-slate-800 bg-blue-50 p-3 rounded-lg border border-blue-100">{item.answer_text || "Not answered"}</p>
+      {submissionDetails.map((item, index) => {
+        // ★★★ MODIFICATION: Logic to determine and format the correct answer for display ★★★
+        let correctAnswerDisplay = 'N/A';
+        if (item.correct_answer) {
+          if (item.question_type === 'multiple_choice' && item.options && item.options[item.correct_answer]) {
+            correctAnswerDisplay = `${item.correct_answer}. ${item.options[item.correct_answer]}`;
+          } else {
+            correctAnswerDisplay = item.correct_answer;
+          }
+        }
+
+        return (
+          <div key={item.question_id} className="bg-white rounded-xl shadow-sm border border-slate-200">
+            <div className="p-6 border-b border-slate-200">
+              <p className="font-semibold text-slate-500">Question {index + 1} <span className="font-normal text-slate-400">(Max {item.marks} Marks)</span></p>
+              <p className="text-lg text-slate-800 mt-1">{item.question_text}</p>
             </div>
-             <div>
-              <label htmlFor={`gradeInput-${item.question_id}`} className="block mb-2 font-semibold text-slate-700">Award Marks</label>
-              <input 
-                id={`gradeInput-${item.question_id}`} type="number" min="0" max={item.marks} step="0.5"
-                placeholder={`Enter marks out of ${item.marks}`} 
-                className="w-full sm:w-1/2 md:w-1/3 border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none p-2.5 rounded-lg text-sm" 
-                value={gradedAnswers[item.question_id] ?? ""} 
-                onChange={(e) => handleGradeChange(item.question_id, e.target.value)} 
-              />
+            <div className="p-6 bg-slate-100">
+              <div className="mb-4">
+                <p className="font-semibold text-slate-700 mb-2">Student's Answer:</p>
+                <p className="text-slate-800 bg-blue-50 p-3 rounded-lg border border-blue-100">{item.answer_text || "Not answered"}</p>
+              </div>
+
+              {/* ★★★ NEW ELEMENT: Display the correct answer ★★★ */}
+              <div className="mb-4">
+                <p className="font-semibold text-green-700 mb-2">Correct Answer:</p>
+                <p className="text-green-800 bg-green-50 p-3 rounded-lg border border-green-100">{correctAnswerDisplay}</p>
+              </div>
+
+              <div>
+                <label htmlFor={`gradeInput-${item.question_id}`} className="block mb-2 font-semibold text-slate-700">Award Marks</label>
+                <input 
+                  id={`gradeInput-${item.question_id}`} type="number" min="0" max={item.marks} step="0.5"
+                  placeholder={`Enter marks out of ${item.marks}`} 
+                  className="w-full sm:w-1/2 md:w-1/3 border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none p-2.5 rounded-lg text-sm" 
+                  value={gradedAnswers[item.question_id] ?? ""} 
+                  onChange={(e) => handleGradeChange(item.question_id, e.target.value)} 
+                />
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
       <div className="flex justify-end flex-col-reverse sm:flex-row sm:space-x-4 gap-3 sm:gap-0 pt-4">
         <button className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-bold transition-all shadow-md disabled:opacity-50" onClick={submitGrade} disabled={isSubmittingGrade}>
           {isSubmittingGrade ? (<div className="flex items-center justify-center"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>Submitting...</div>) : ("Submit Grades")}
